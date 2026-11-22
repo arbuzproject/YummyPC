@@ -287,6 +287,9 @@ private fun YaniAnimeResponseDto.toPage(videos: List<YaniAnimeVideoDto>): AnimeP
         episodes = episodeCards,
         viewingOrder = order,
         screenshots = screenshots,
+        currentListHref = user?.list?.list?.href,
+        isFavorite = user?.list?.isFav == true,
+        commentsCount = commentsCount,
     )
 }
 

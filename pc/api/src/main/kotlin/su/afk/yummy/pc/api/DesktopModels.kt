@@ -123,6 +123,12 @@ data class AnimePage(
     val episodes: List<EpisodeCard>,
     val viewingOrder: List<ViewingOrderItem>,
     val screenshots: List<String>,
+    /** Текущий статус тайтла в списках пользователя (`watch_now`/`will`/`watched`/`lost`/`postponed`). */
+    val currentListHref: String? = null,
+    /** Тайтл в «Любимом». */
+    val isFavorite: Boolean = false,
+    /** Количество комментариев (для кнопки «Комментарии»). */
+    val commentsCount: Int = 0,
 ) {
     val posterForHero: String?
         get() = screenshots.firstOrNull() ?: posterUrl

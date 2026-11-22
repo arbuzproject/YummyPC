@@ -50,6 +50,12 @@ import su.afk.yummy.pc.api.YaniAuthApi
 import su.afk.yummy.pc.api.YaniRepository
 import su.afk.yummy.pc.api.YummyConfig
 import su.afk.yummy.pc.player.PlaybackRequest
+import su.afk.yummy.pc.player.resolveContinuePlayback
+import su.afk.yummy.pc.player.resolveHeroPlayback
+import su.afk.yummy.pc.ui.comments.CommentsScreen
+import androidx.compose.material3.CircularProgressIndicator
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import su.afk.yummy.pc.ui.components.PosterImage
 import su.afk.yummy.pc.ui.details.DetailsScreen
 import su.afk.yummy.pc.ui.history.HistoryScreen
@@ -75,6 +81,7 @@ sealed interface Screen {
     data object Collections : Screen
     data object History : Screen
     data object News : Screen
+    data class Comments(val animeId: Int, val title: String) : Screen
     data object Settings : Screen
     data class Details(val id: Int) : Screen
 }
@@ -93,6 +100,21 @@ fun App(
     var previous by remember { mutableStateOf<Screen>(Screen.Home) }
     var playback by remember { mutableStateOf<PlaybackRequest?>(null) }
     var searchGenre by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    // Экран-прокладка при быстром запуске с главной: пока идёт резолв потока.
+    var quickLabel by remember { mutableStateOf<String?>(null) }
+    var quickError by remember { mutableStateOf<String?>(null) }
+
+    fun quickPlay(label: String, loader: suspend () -> PlaybackRequest?) {
+        if (quickLabel != null) return
+        quickLabel = label
+        quickError = null
+        scope.launch {
+            val request = runCatching { loader() }.getOrNull()
+            quickLabel = null
+            if (request != null) playback = request else quickError = "Не удалось открыть плеер. Попробуйте ещё раз"
+        }
+    }
 
     // Дослать локально накопленные действия со списками, если аккаунт доступен.
     LaunchedEffect(YummyConfig.isAuthorized) {
@@ -118,6 +140,21 @@ fun App(
             return@YummyTheme
         }
 
+        if (quickLabel != null) {
+            Box(
+                Modifier.fillMaxSize().background(Color(0xCC000000)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    CircularProgressIndicator(color = YummyPalette.Accent, modifier = Modifier.size(40.dp))
+                    Text(quickLabel ?: "", color = YummyPalette.Text, style = MaterialTheme.typography.titleMedium)
+                    Text("Готовим видеопоток…", color = YummyPalette.TextDim, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
         Row(Modifier.fillMaxSize().background(YummyPalette.Background)) {
             NavigationRail(
                 current = screen,
@@ -134,7 +171,10 @@ fun App(
                     is Screen.Home -> HomeScreen(
                         repository = repository,
                         onOpen = { open(Screen.Details(it)) },
-                        onPlayHero = { id -> open(Screen.Details(id)) },
+                        onPlayHero = { id -> quickPlay("Запускаем тайтл…") { resolveHeroPlayback(id) } },
+                        onContinuePlay = { id, episode ->
+                            quickPlay("Открываем серию…") { resolveContinuePlayback(id, episode) }
+                        },
                     )
 
                     is Screen.Top -> TopScreen(
@@ -174,6 +214,12 @@ fun App(
                         onOpenAnime = { open(Screen.Details(it)) },
                     )
 
+                    is Screen.Comments -> CommentsScreen(
+                        animeId = current.animeId,
+                        animeTitle = current.title,
+                        onBack = { screen = previous },
+                    )
+
                     is Screen.News -> NewsScreen(
                         onOpenAnime = { open(Screen.Details(it)) },
                     )
@@ -192,6 +238,10 @@ fun App(
                             searchGenre = genre
                             previous = screen
                             screen = Screen.Search
+                        },
+                        onOpenComments = { id, title ->
+                            previous = screen
+                            screen = Screen.Comments(id, title)
                         },
                     )
                 }

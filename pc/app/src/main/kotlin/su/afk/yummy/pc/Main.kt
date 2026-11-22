@@ -91,6 +91,7 @@ fun main(args: Array<String>) {
         screenArg == "history" -> Screen.History
         screenArg == "settings" -> Screen.Settings
         screenArg == "news" -> Screen.News
+        screenArg == "comments" && animeId != null -> Screen.Comments(animeId, "")
         else -> Screen.Home
     }
 

@@ -63,7 +63,23 @@ data class YaniAnimeRatingDto(
 )
 
 @Serializable
-data class YaniAnimeUserDto(val rating: Double? = null)
+data class YaniAnimeUserDto(
+    val rating: Double? = null,
+    val list: YaniAnimeUserListWrapperDto? = null,
+)
+
+@Serializable
+data class YaniAnimeUserListWrapperDto(
+    @SerialName("is_fav") val isFav: Boolean = false,
+    val list: YaniAnimeUserListDto? = null,
+)
+
+@Serializable
+data class YaniAnimeUserListDto(
+    val id: Int? = null,
+    val href: String? = null,
+    val title: String? = null,
+)
 
 @Serializable
 data class YaniNamedDto(

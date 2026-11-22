@@ -61,11 +61,22 @@ import su.afk.yummy.pc.ui.components.SectionHeader
 import su.afk.yummy.pc.ui.components.SmoothRow
 import su.afk.yummy.pc.ui.theme.YummyPalette
 
+/**
+ * Главная: баннер-карусель, «Продолжить просмотр», новые серии и лента подборок.
+ *
+ * @param repository репозиторий yani для ленты и баннеров.
+ * @param onOpen открыть страницу тайтла (постеры ленты, «Подробнее» на баннере).
+ * @param onPlayHero кнопка «Смотреть» на баннере: запуск плеера сразу (id тайтла),
+ *   без перехода на страницу тайтла.
+ * @param onContinuePlay клик по карточке «Продолжить просмотр»: запуск плеера сразу
+ *   (id тайтла, серия из карточки); серия может быть пустой — тогда плеер откроет последнюю.
+ */
 @Composable
 fun HomeScreen(
     repository: YaniRepository,
     onOpen: (Int) -> Unit,
     onPlayHero: (Int) -> Unit,
+    onContinuePlay: (Int, String) -> Unit = { _, _ -> },
 ) {
     var reloadKey by remember { mutableStateOf(0) }
     val extrasApi = remember { YaniHomeExtrasApi() }
@@ -89,7 +100,7 @@ fun HomeScreen(
     when (val current = state) {
         is LoadState.Loading -> LoadingView("Загружаем главную…")
         is LoadState.Error -> ErrorView(current.message) { reloadKey++ }
-        is LoadState.Data -> HomeContent(current.value, extras, onOpen, onPlayHero)
+        is LoadState.Data -> HomeContent(current.value, extras, onOpen, onPlayHero, onContinuePlay)
     }
 }
 
@@ -99,6 +110,7 @@ private fun HomeContent(
     extras: HomeExtras,
     onOpen: (Int) -> Unit,
     onPlayHero: (Int) -> Unit,
+    onContinuePlay: (Int, String) -> Unit,
 ) {
     LazyColumn(Modifier.fillMaxSize()) {
         if (data.hero.isNotEmpty()) {
@@ -106,7 +118,7 @@ private fun HomeContent(
         }
         // Порядок блоков как в ТВ-клиенте: сначала «продолжить», затем новые серии, потом лента.
         if (extras.continueWatching.isNotEmpty()) {
-            item { ContinueWatchingRow(extras.continueWatching, onOpen) }
+            item { ContinueWatchingRow(extras.continueWatching, onContinuePlay) }
         }
         if (extras.newEpisodesFromMyLists.isNotEmpty()) {
             item { NewEpisodesRow("Новые серии из ваших списков", extras.newEpisodesFromMyLists, onOpen) }
@@ -127,13 +139,19 @@ private fun HomeContent(
     }
 }
 
-/** «Продолжить просмотр»: широкие карточки с обложкой, серией, прогрессом и временем. */
+/**
+ * «Продолжить просмотр»: широкие карточки с обложкой, серией, прогрессом и временем.
+ * Клик сразу запускает плеер на серии из карточки, а не открывает страницу тайтла.
+ */
 @Composable
-private fun ContinueWatchingRow(entries: List<HomeContinueWatching>, onOpen: (Int) -> Unit) {
+private fun ContinueWatchingRow(
+    entries: List<HomeContinueWatching>,
+    onContinuePlay: (Int, String) -> Unit,
+) {
     SectionHeader("Продолжить просмотр")
     SmoothRow(contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp)) {
         items(entries, key = { it.animeId }) { entry ->
-            ContinueWatchingCard(entry, onClick = { onOpen(entry.animeId) })
+            ContinueWatchingCard(entry, onClick = { onContinuePlay(entry.animeId, entry.episode) })
         }
     }
     Spacer(Modifier.height(10.dp))

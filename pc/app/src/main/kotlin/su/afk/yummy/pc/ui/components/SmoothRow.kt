@@ -96,12 +96,14 @@ fun SmoothRow(
             content = content,
         )
         val x = pointerX
-        if (x != null && x < edgePx) {
+        val canBack = state.canScrollBackward
+        val canForward = state.canScrollForward
+        if (x != null && x < edgePx && canBack) {
             RowArrow(forward = false, modifier = Modifier.align(Alignment.CenterStart)) {
                 scope.launch { state.animateScrollBy(-900f) }
             }
         }
-        if (x != null && x > rowWidthPx - edgePx && rowWidthPx > 0) {
+        if (x != null && x > rowWidthPx - edgePx && rowWidthPx > 0 && canForward) {
             RowArrow(forward = true, modifier = Modifier.align(Alignment.CenterEnd)) {
                 scope.launch { state.animateScrollBy(900f) }
             }

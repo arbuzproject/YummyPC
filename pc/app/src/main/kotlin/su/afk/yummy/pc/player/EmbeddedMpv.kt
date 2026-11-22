@@ -92,7 +92,13 @@ class EmbeddedMpv(
         } ?: bridgeLog.appendText("no bridge factory\n")
     }
 
-    fun togglePause() {
+    /** Переключить поток в уже запущенном mpv (без пересоздания окна/процесса). */
+fun loadFile(url: String): Result<Unit> = runCatching {
+    val current = bridge ?: error("плеер не запущен")
+    check(current.loadFile(url)) { "mpv не принял новый поток" }
+}
+
+fun togglePause() {
         val current = state.value.paused
         bridge?.setPaused(!current)
     }

@@ -19,6 +19,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import kotlinx.coroutines.flow.collect
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -100,6 +106,9 @@ private val DEFAULT_FILTERS = SearchFilters()
 /** Сколько популярных тайтлов грузим при пустом запросе (как просит макет). */
 private const val POPULAR_LIMIT = 48
 
+/** Размер страницы при подгрузке результатов прокруткой. */
+private const val PAGE_SIZE = 30
+
 /** Что показывает сетка: популярное (пустой запрос + фильтры по умолчанию) или поиск. */
 private sealed interface SearchRequest {
     data object Popular : SearchRequest
@@ -137,6 +146,11 @@ fun SearchScreen(
     // Что именно загружено/загружается — от этого зависят подпись сетки и тексты состояний.
     var lastRequest by remember { mutableStateOf<SearchRequest>(SearchRequest.Popular) }
     var state by remember { mutableStateOf<LoadState<List<AnimeCard>>>(LoadState.Loading) }
+    // Подгрузка следующих страниц при прокрутке вниз.
+    var extraItems by remember { mutableStateOf<List<AnimeCard>>(emptyList()) }
+    var nextOffset by remember { mutableStateOf(0) }
+    var hasMore by remember { mutableStateOf(false) }
+    var loadingMore by remember { mutableStateOf(false) }
 
     val filterData by produceState<Triple<List<AnimeType>, List<GenreOption>, String?>>(
         Triple(emptyList(), emptyList(), null),
@@ -146,13 +160,21 @@ fun SearchScreen(
         }.getOrElse { Triple(emptyList(), emptyList(), it.message) }
     }
 
+    fun effectiveFilters(): SearchFilters =
+        if (filters.sort == "top") filters.copy(sort = "rating", sortForward = false) else filters
+
     fun currentRequest(): SearchRequest {
         val text = query.trim()
         return if (text.isEmpty() && filters == DEFAULT_FILTERS) {
             SearchRequest.Popular
         } else {
-            SearchRequest.Query(text, filters)
+            SearchRequest.Query(text, effectiveFilters())
         }
+    }
+
+    suspend fun loadPage(request: SearchRequest, offset: Int): List<AnimeCard> = when (request) {
+        SearchRequest.Popular -> repository.top(limit = PAGE_SIZE, offset = offset)
+        is SearchRequest.Query -> repository.search(request.text, request.filters, limit = PAGE_SIZE, offset = offset)
     }
 
     // Первый запуск — сразу при открытии экрана; дальше — на смену фильтров/сортировки
@@ -172,17 +194,43 @@ fun SearchScreen(
         val request = currentRequest()
         lastRequest = request
         state = LoadState.Loading
+        extraItems = emptyList()
+        nextOffset = 0
+        hasMore = false
         state = try {
-            LoadState.Data(
-                when (request) {
-                    SearchRequest.Popular -> repository.top(limit = POPULAR_LIMIT)
-                    is SearchRequest.Query -> repository.search(request.text, request.filters)
-                },
-            )
+            val first = loadPage(request, 0)
+            nextOffset = first.size
+            hasMore = first.size >= PAGE_SIZE
+            LoadState.Data(first)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             LoadState.Error(e.message ?: e.toString())
+        }
+    }
+
+    val gridState = rememberLazyGridState()
+    LaunchedEffect(gridState, lastRequest, hasMore) {
+        snapshotFlow {
+            val info = gridState.layoutInfo
+            (info.visibleItemsInfo.lastOrNull()?.index ?: -1) to (info.totalItemsCount)
+        }.collect { (lastVisible, total) ->
+            if (!loadingMore && hasMore && total > 0 && lastVisible >= total - 6) {
+                loadingMore = true
+                try {
+                    val page = loadPage(lastRequest, nextOffset)
+                    val known = ((state as? LoadState.Data)?.value.orEmpty() + extraItems).map { it.id }.toSet()
+                    extraItems = extraItems + page.filterNot { it.id in known }
+                    nextOffset += page.size
+                    hasMore = page.size >= PAGE_SIZE
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    hasMore = false
+                } finally {
+                    loadingMore = false
+                }
+            }
         }
     }
 
@@ -285,16 +333,30 @@ fun SearchScreen(
                     }
                 } else {
                     Column(Modifier.fillMaxSize()) {
-                        ResultsHeader(lastRequest, current.value.size)
+                        val merged = remember(current.value, extraItems) { current.value + extraItems }
+                        ResultsHeader(lastRequest, merged.size)
                         LazyVerticalGrid(
+                            state = gridState,
                             modifier = Modifier.weight(1f),
                             columns = GridCells.Adaptive(minSize = 190.dp),
                             horizontalArrangement = Arrangement.spacedBy(14.dp),
                             verticalArrangement = Arrangement.spacedBy(18.dp),
                             contentPadding = PaddingValues(bottom = 24.dp),
                         ) {
-                            items(current.value, key = { it.id }) { card ->
+                            items(merged, key = { it.id }) { card ->
                                 PosterCard(card, onClick = { onOpen(card.id) }, width = 190.dp, posterHeight = 268.dp)
+                            }
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                Box(
+                                    Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    when {
+                                        loadingMore -> CircularProgressIndicator(color = YummyPalette.Accent, modifier = Modifier.size(28.dp))
+                                        hasMore -> Text("Прокрутите вниз, чтобы загрузить ещё", color = YummyPalette.TextDim, style = MaterialTheme.typography.bodySmall)
+                                        else -> Text("Это все результаты", color = YummyPalette.TextDim, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
                             }
                         }
                     }

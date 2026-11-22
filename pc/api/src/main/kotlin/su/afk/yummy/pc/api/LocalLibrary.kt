@@ -63,6 +63,30 @@ data class StoredHistory(
     val durationSec: Int = 0,
 )
 
+/**
+ * Последний выбранный способ просмотра тайтла: озвучка и балансер.
+ *
+ * Нужен быстрому запуску: клик по «Продолжить просмотр» или «Смотреть» на главной открывает
+ * тот же источник, которым тайтл смотрели в прошлый раз, без открытия страницы тайтла
+ * и повторного выбора озвучки. Хранится [LocalLibrary.rememberPlaybackChoice], читается
+ * [LocalLibrary.playbackChoice].
+ *
+ * @property dubbing название озвучки как его отдал yani; пустая строка — озвучки нет.
+ * @property player название балансера как его отдал yani; пустая строка — балансер неизвестен.
+ */
+data class PlaybackChoice(
+    val dubbing: String,
+    val player: String,
+)
+
+/** Запись выбора озвучки/балансера в `library.json`: у тайтла хранится только последний выбор. */
+@Serializable
+internal data class StoredPlaybackChoice(
+    val animeId: Int,
+    val dubbing: String = "",
+    val player: String = "",
+)
+
 /** Отложенное действие «поставить статус списка»: уйдёт на сервер в [LocalLibrary.flush]. */
 @Serializable
 internal data class PendingListStatus(
@@ -77,23 +101,26 @@ internal data class PendingFavorite(
     val favorite: Boolean,
 )
 
-/** Содержимое `library.json`: снимки, история и очередь неотправленных действий. */
+/** Содержимое `library.json`: снимки, история, выборы озвучки и очередь неотправленных действий. */
 @Serializable
 private data class LibraryFileDto(
     val lists: List<StoredLists> = emptyList(),
     val history: List<StoredHistory> = emptyList(),
     val pendingListStatus: List<PendingListStatus> = emptyList(),
     val pendingFavorite: List<PendingFavorite> = emptyList(),
+    /** Выборы «озвучка + балансер» для быстрого запуска; старые записи вытесняются. */
+    val playbackChoices: List<StoredPlaybackChoice> = emptyList(),
 ) {
     /** Совсем ничего не сохранено — такой файл создавать не нужно. */
     val isEmpty: Boolean
         get() = lists.isEmpty() && history.isEmpty() &&
-            pendingListStatus.isEmpty() && pendingFavorite.isEmpty()
+            pendingListStatus.isEmpty() && pendingFavorite.isEmpty() &&
+            playbackChoices.isEmpty()
 }
 
 /**
- * Локальная библиотека: снимки списков и истории просмотра плюс очередь действий,
- * которые не удалось отправить на yani.
+ * Локальная библиотека: снимки списков, история просмотра, последние выбранные озвучки
+ * и балансеры плюс очередь действий, которые не удалось отправить на yani.
  *
  * Зачем: без авторизации или при недоступном сервере экраны «Мои списки» и «История
  * просмотра» показывают последний удачный снимок с пометкой «Локальная библиотека»
@@ -111,6 +138,9 @@ object LocalLibrary {
 
     /** Сколько снимков разных аккаунтов храним: при смене аккаунта старые вытесняются. */
     private const val MAX_STORED_ACCOUNTS = 5
+
+    /** Сколько последних выборов озвучки/балансера храним: старые вытесняются, файл не растёт. */
+    private const val MAX_PLAYBACK_CHOICES = 200
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -192,6 +222,50 @@ object LocalLibrary {
      */
     fun loadHistory(): List<StoredHistory>? = synchronized(lock) {
         readLibrary().history.takeIf { it.isNotEmpty() }
+    }
+
+    // --- Выбор озвучки и балансера ---
+
+    /**
+     * Запоминает, чем смотрели тайтл [animeId]: озвучку [dubbing] и балансер [player].
+     *
+     * Нужно быстрому запуску с главной: следующее «Продолжить просмотр» или «Смотреть»
+     * откроет тот же источник, что и в прошлый раз. У тайтла хранится только последний
+     * выбор, старые записи вытесняются. Некорректный id и совсем пустой выбор (обе строки
+     * пустые) игнорируются, иначе они затёрли бы полезный сохранённый выбор.
+     *
+     * Ошибки файла глушатся, как у остальных методов: без запоминания плеер всё равно работает.
+     */
+    fun rememberPlaybackChoice(animeId: Int, dubbing: String, player: String) {
+        if (animeId <= 0) return
+        val dubbingName = dubbing.trim()
+        val playerName = player.trim()
+        if (dubbingName.isEmpty() && playerName.isEmpty()) return
+        synchronized(lock) {
+            val library = readLibrary()
+            val choices = (
+                library.playbackChoices.filterNot { it.animeId == animeId } +
+                    StoredPlaybackChoice(
+                        animeId = animeId,
+                        dubbing = dubbingName,
+                        player = playerName,
+                    )
+                ).takeLast(MAX_PLAYBACK_CHOICES)
+            writeLibrary(library.copy(playbackChoices = choices))
+        }
+    }
+
+    /**
+     * Сохранённый выбор озвучки/балансера для тайтла [animeId].
+     *
+     * @return `null` — тайтл ещё не смотрели в этом клиенте или файл недоступен;
+     *   у сохранённого выбора строки могут быть пустыми (сервер не прислал имя).
+     */
+    fun playbackChoice(animeId: Int): PlaybackChoice? = synchronized(lock) {
+        if (animeId <= 0) return@synchronized null
+        readLibrary().playbackChoices
+            .lastOrNull { it.animeId == animeId }
+            ?.let { PlaybackChoice(dubbing = it.dubbing, player = it.player) }
     }
 
     // --- Очередь действий без сети ---

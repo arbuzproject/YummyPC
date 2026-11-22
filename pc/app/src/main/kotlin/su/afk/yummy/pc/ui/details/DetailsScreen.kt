@@ -37,6 +37,8 @@ import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -121,11 +123,13 @@ fun DetailsScreen(
     onOpenAnime: (Int) -> Unit,
     onBack: () -> Unit,
     onOpenSearch: (String) -> Unit = {},
+    onOpenComments: (Int, String) -> Unit = { _, _ -> },
 ) {
     val scope = rememberCoroutineScope()
     val api = remember { YaniApi() }
     val extras = remember { YaniAnimeExtrasApi() }
     var status by remember(animeId) { mutableStateOf<String?>(null) }
+    var preparing by remember(animeId) { mutableStateOf(false) }
     var subscribeDialogOpen by remember(animeId) { mutableStateOf(false) }
     var screenshotIndex by remember(animeId) { mutableStateOf<Int?>(null) }
 
@@ -156,11 +160,17 @@ fun DetailsScreen(
             ?: ordered.firstOrNull { it.dubbing == page.dubbings.firstOrNull()?.name }
             ?: ordered.firstOrNull()
             ?: return
+        preparing = true
+        status = null
         scope.launch {
-            PlayerActions.resolve(video, page.title, page.id, videos, page.episodes).fold(
-                onSuccess = { onPlay(it) },
-                onFailure = { status = "Не удалось получить поток: ${it.message}" },
-            )
+            try {
+                PlayerActions.resolve(video, page.title, page.id, videos, page.episodes).fold(
+                    onSuccess = { onPlay(it) },
+                    onFailure = { status = "Не удалось получить поток: ${it.message}" },
+                )
+            } finally {
+                preparing = false
+            }
         }
     }
 
@@ -176,6 +186,14 @@ fun DetailsScreen(
             // Локальное состояние видео: подписка меняет `subscribed`, и колокольчик должен
             // обновиться сразу, без перезагрузки страницы. Остальные поля не меняются.
             var videos by remember(page.id) { mutableStateOf(page.videos) }
+            var listHref by remember(page.id) { mutableStateOf(page.currentListHref) }
+            var isFav by remember(page.id) { mutableStateOf(page.isFavorite) }
+            // Прогреваем поток самой популярной озвучки: «Смотреть» откроется без ожидания.
+            LaunchedEffect(page.id) {
+                val popular = page.dubbings.maxByOrNull { it.videos.size }?.videos?.firstOrNull()
+                    ?: page.videos.firstOrNull()
+                if (popular != null) runCatching { PlayerActions.prefetch(popular) }
+            }
             LaunchedEffect(page.id, autoPlay) {
                 if (autoPlay) {
                     page.episodes.firstOrNull()?.let { playEpisode(page, it.videos) }
@@ -246,12 +264,18 @@ fun DetailsScreen(
                                     Text("▶  Смотреть", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 }
                                 var listMenuOpen by remember { mutableStateOf(false) }
+                                val statusLabel = listStatusLabel(listHref, isFav)
+                                val statusColor = listStatusColor(listHref, isFav)
                                 Box {
-                                    OutlinedButton(
+                                    Button(
                                         onClick = { listMenuOpen = true },
                                         shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = statusColor,
+                                            contentColor = Color(0xFF16110B),
+                                        ),
                                         modifier = Modifier.height(52.dp).width(220.dp),
-                                    ) { Text("В список") }
+                                    ) { Text(statusLabel, fontWeight = FontWeight.Bold) }
                                     DropdownMenu(
                                         expanded = listMenuOpen,
                                         onDismissRequest = { listMenuOpen = false },
@@ -429,7 +453,43 @@ fun DetailsScreen(
                         }
                     }
 
+                    Spacer(Modifier.height(22.dp))
+                    Button(
+                        onClick = { onOpenComments(page.id, page.title) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = YummyPalette.SurfaceHigh,
+                            contentColor = YummyPalette.Text,
+                        ),
+                        modifier = Modifier.height(48.dp),
+                    ) {
+                        Text("Комментарии (${page.commentsCount})", fontWeight = FontWeight.Bold)
+                    }
                     Spacer(Modifier.height(24.dp))
+                }
+
+                if (preparing) {
+                    Box(
+                        Modifier.fillMaxSize().background(Color(0xCC000000)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
+                            CircularProgressIndicator(color = YummyPalette.Accent, modifier = Modifier.size(40.dp))
+                            Text(
+                                "Готовим видеопоток…",
+                                color = YummyPalette.Text,
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                "Это может занять несколько секунд",
+                                color = YummyPalette.TextDim,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
                 }
 
                 if (subscribeDialogOpen) {
@@ -770,3 +830,30 @@ private val LIST_STATUS_OPTIONS = listOf(
     5 to "Отложено",
     -1 to "Любимое",
 )
+/** Подпись кнопки списка по текущему статусу. */
+private fun listStatusLabel(href: String?, isFav: Boolean): String = when {
+    isFav -> "Любимое"
+    href == null -> "В список"
+    else -> LIST_STATUS_OPTIONS.firstOrNull { listStatusHrefFor(it.first) == href }?.second ?: "В список"
+}
+
+/** Цвет кнопки списка: палитра статусов yani. */
+private fun listStatusColor(href: String?, isFav: Boolean): Color = when {
+    isFav -> Color(0xFFD65CE0)
+    href == "watch_now" -> Color(0xFFF4665C)
+    href == "will" -> Color(0xFF8E7BE8)
+    href == "watched" -> Color(0xFF35C77B)
+    href == "lost" -> Color(0xFF7C8A99)
+    href == "postponed" -> Color(0xFFF2C744)
+    else -> Color(0xFF23232B)
+}
+
+/** href статуса по id списка yani. */
+private fun listStatusHrefFor(listId: Int): String = when (listId) {
+    0 -> "watch_now"
+    1 -> "will"
+    2 -> "watched"
+    3 -> "lost"
+    5 -> "postponed"
+    else -> "fav"
+}

@@ -60,13 +60,14 @@ import su.afk.yummy.pc.player.EmbeddedMpv
 import su.afk.yummy.pc.player.MpvPlaybackState
 import su.afk.yummy.pc.player.PlaybackRequest
 import su.afk.yummy.pc.player.PlayerActions
+import su.afk.yummy.pc.player.rememberChoice
 import su.afk.yummy.pc.ui.LocalWindowControl
 import su.afk.yummy.pc.ui.theme.YummyPalette
 import java.awt.Canvas
 import kotlin.math.max
 import kotlin.math.min
 
-private enum class PlayerPanel { NONE, SOURCES, INFO }
+private enum class PlayerPanel { NONE, SOURCES }
 
 /**
  * Фоновые best-effort отчёты о просмотре. При `onClose` композиция плеера уничтожается,
@@ -123,7 +124,6 @@ fun PlayerScreen(
         mutableStateOf(
             when (initialPanel) {
                 "sources" -> PlayerPanel.SOURCES
-                "info" -> PlayerPanel.INFO
                 else -> PlayerPanel.NONE
             },
         )
@@ -177,6 +177,8 @@ fun PlayerScreen(
         )
         player = embedded
         embedded.start(request.url).onFailure { error = it.message ?: it.toString() }
+        // Запоминаем выбранную озвучку/балансер для быстрого запуска с главной.
+        runCatching { rememberChoice(request) }
 
         // Пока смотрится текущая серия, заранее разрешаем поток следующей — автопереход
         // и кнопка «Серия →» откроются из кэша PlayerActions, без сетевого ожидания.
@@ -333,12 +335,24 @@ fun PlayerScreen(
             }
             error?.let { message ->
                 Box(Modifier.fillMaxSize().background(Color(0xCC000000)), contentAlignment = Alignment.Center) {
-                    Text(
-                        "Не удалось открыть поток: $message",
-                        color = Color(0xFFFF8A65),
-                        style = MaterialTheme.typography.bodyLarge,
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.padding(24.dp),
-                    )
+                    ) {
+                        Text(
+                            "Не удалось открыть поток: $message",
+                            color = Color(0xFFFF8A65),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            PanelButton("Повторить") {
+                                error = null
+                                player?.start(request.url)?.onFailure { error = it.message ?: it.toString() }
+                            }
+                            PanelButton("Закрыть") { onClose() }
+                        }
+                    }
                 }
             }
         }
@@ -352,8 +366,6 @@ fun PlayerScreen(
                 onSelectExternal = ::switchToExternal,
                 onClose = { panel = PlayerPanel.NONE },
             )
-
-            PlayerPanel.INFO -> InfoPanel(request) { panel = PlayerPanel.NONE }
 
             PlayerPanel.NONE -> if (controlsVisible) {
                 ControlBar(
@@ -380,7 +392,6 @@ fun PlayerScreen(
                     },
                     onQuality = { if (request.qualities.isNotEmpty()) qualityDialogOpen = true },
                     onSources = { panel = PlayerPanel.SOURCES },
-                    onInfo = { panel = PlayerPanel.INFO },
                     onFullscreen = { windowControl.toggleFullscreen() },
                     onSkipOpening = { request.openingSkip?.let { player?.seekTo(it.endSec.toDouble()) } },
                     onSkipEnding = { request.endingSkip?.let { player?.seekTo(it.endSec.toDouble()) } },
@@ -405,8 +416,16 @@ fun PlayerScreen(
             currentLabel = request.qualityLabel,
             onSelect = { url, label ->
                 qualityDialogOpen = false
-                // Смена качества — новый поток: счётчик отчёта о просмотре сбрасывается.
                 reportedForUrl = null
+                val embedded = player
+                val position = state.positionSec
+                if (embedded != null) {
+                    // Меняем поток «на лету» в том же процессе mpv: рендер-поверхность
+                    // не пересоздаётся, поэтому экран не чернеет.
+                    if (embedded.loadFile(url).isSuccess) {
+                        embedded.seekTo(position)
+                    }
+                }
                 request = request.copy(url = url, qualityLabel = label)
             },
             onDismiss = { qualityDialogOpen = false },
@@ -428,7 +447,6 @@ private fun ControlBar(
     onSpeed: () -> Unit,
     onQuality: () -> Unit,
     onSources: () -> Unit,
-    onInfo: () -> Unit,
     onFullscreen: () -> Unit,
     onSkipOpening: () -> Unit,
     onSkipEnding: () -> Unit,
@@ -501,7 +519,6 @@ private fun ControlBar(
             Spacer(Modifier.weight(1f))
             switchStatus?.let { Text(it, color = YummyPalette.Accent, style = MaterialTheme.typography.labelSmall) }
             PanelButton("Озвучка и балансер") { onSources() }
-            PanelButton("Инфо") { onInfo() }
             if (active.qualities.size > 1) {
                 PanelButton("Качество: ${active.qualityLabel.ifBlank { "auto" }}") { onQuality() }
             }
@@ -631,40 +648,6 @@ private fun SourcePanel(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun InfoPanel(active: PlaybackRequest, onClose: () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .height(400.dp)
-            .background(YummyPalette.BackgroundElevated)
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Инфо", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = YummyPalette.Text)
-            PanelButton("Назад к управлению") { onClose() }
-        }
-        InfoLine("Тайтл", active.pageTitle)
-        InfoLine("Серия", active.episodeNumber)
-        InfoLine("Озвучка", active.dubbingName)
-        InfoLine("Балансер", active.playerName)
-        InfoLine("Поток", active.url)
-        InfoLine("Опенинг", active.openingSkip?.let { "${it.startSec} с + ${it.lengthSec} с" } ?: "нет данных")
-        InfoLine("Эндинг", active.endingSkip?.let { "${it.startSec} с + ${it.lengthSec} с" } ?: "нет данных")
-        InfoLine("Серий в плейлисте", active.episodes.size.toString())
-    }
-}
-
-@Composable
-private fun InfoLine(label: String, value: String) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("$label:", style = MaterialTheme.typography.labelMedium, color = YummyPalette.TextDim, modifier = Modifier.width(150.dp))
-        Text(value, style = MaterialTheme.typography.labelMedium, color = YummyPalette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
