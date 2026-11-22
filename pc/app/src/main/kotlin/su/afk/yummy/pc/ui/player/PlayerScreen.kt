@@ -1,4 +1,4 @@
-// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
+﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.ui.player
 
 import androidx.compose.foundation.background
@@ -150,6 +150,15 @@ fun PlayerScreen(
 
     val canvas = remember { Canvas() }
     var player by remember { mutableStateOf<EmbeddedMpv?>(null) }
+    // Плашка загрузки — отдельное окно ОС: mpv перекрывает Compose-слой.
+    val loadingOverlay = remember { PlayerLoadingOverlay(windowControl.window) }
+    LaunchedEffect(state.loaded, error, request.url) {
+        if (!state.loaded && error == null) {
+            loadingOverlay.show(if (request.qualityLabel.isNotBlank()) "Загрузка потока (${request.qualityLabel})…" else "Загрузка видеопотока…")
+        } else {
+            loadingOverlay.hide()
+        }
+    }
 
     LaunchedEffect(request.url) {
         player?.dispose()

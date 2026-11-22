@@ -1,7 +1,8 @@
-// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
+﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.ui.details
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -62,6 +63,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -78,6 +80,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import su.afk.yummy.pc.api.AnimeCard
 import su.afk.yummy.pc.api.AnimePage
@@ -130,6 +133,7 @@ fun DetailsScreen(
     val extras = remember { YaniAnimeExtrasApi() }
     var status by remember(animeId) { mutableStateOf<String?>(null) }
     var preparing by remember(animeId) { mutableStateOf(false) }
+    var playJob by remember(animeId) { mutableStateOf<Job?>(null) }
     var subscribeDialogOpen by remember(animeId) { mutableStateOf(false) }
     var screenshotIndex by remember(animeId) { mutableStateOf<Int?>(null) }
 
@@ -282,7 +286,13 @@ fun DetailsScreen(
                                     ) {
                                         LIST_STATUS_OPTIONS.forEach { (listId, label) ->
                                             DropdownMenuItem(
-                                                text = { Text(label, color = YummyPalette.Text) },
+                                                text = {
+                                                    val isCurrent = if (listId < 0) isFav else listStatusHrefFor(listId) == listHref
+                                                    Text(
+                                                        if (isCurrent) "✓ $label" else label,
+                                                        color = if (isCurrent) YummyPalette.Accent else YummyPalette.Text,
+                                                    )
+                                                },
                                                 onClick = {
                                                     listMenuOpen = false
                                                     scope.launch {
@@ -306,6 +316,27 @@ fun DetailsScreen(
                                                             }
                                                             val reason = error.message ?: "ошибка сети"
                                                             status = "Не удалось: $reason. Сохранено локально — отправим позже"
+                                                        }
+                                                    }
+                                                },
+                                            )
+                                        }
+                                        if (listHref != null || isFav) {
+                                            DropdownMenuItem(
+                                                text = { Text("Удалить из списков", color = Color(0xFFFF8A65)) },
+                                                onClick = {
+                                                    listMenuOpen = false
+                                                    scope.launch {
+                                                        runCatching {
+                                                            api.removeFromList(page.id)
+                                                            if (isFav) api.setFavorite(page.id, false)
+                                                        }.onSuccess {
+                                                            listHref = null
+                                                            isFav = false
+                                                            repository.invalidateCache()
+                                                            status = "Удалено из списков"
+                                                        }.onFailure {
+                                                            status = "Не удалось удалить: ${it.message}"
                                                         }
                                                     }
                                                 },
@@ -470,7 +501,11 @@ fun DetailsScreen(
 
                 if (preparing) {
                     Box(
-                        Modifier.fillMaxSize().background(Color(0xCC000000)),
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color(0xCC000000))
+                            // Поглощаем клики — кнопки страницы под прокладкой не нажимаются.
+                            .pointerInput(Unit) { detectTapGestures { } },
                         contentAlignment = Alignment.Center,
                     ) {
                         Column(
@@ -488,6 +523,11 @@ fun DetailsScreen(
                                 color = YummyPalette.TextDim,
                                 style = MaterialTheme.typography.bodySmall,
                             )
+                            TextButton(onClick = {
+                                playJob?.cancel()
+                                playJob = null
+                                preparing = false
+                            }) { Text("Отмена", color = YummyPalette.Text) }
                         }
                     }
                 }

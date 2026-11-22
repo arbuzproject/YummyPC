@@ -1,4 +1,4 @@
-// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
+﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.ui.lists
 
 import androidx.compose.foundation.background
@@ -36,7 +36,6 @@ private val PosterHeight: Dp = 296.dp
 private val StatusChipTopOffset: Dp = PosterHeight - 40.dp
 
 /** Красная точка для «Брошено» — статус видно даже без чтения подписи. */
-private val DroppedDot = Color(0xFFFF6E6E)
 
 /**
  * Карточка тайтла из «Моих списков».
@@ -74,12 +73,12 @@ fun UserListCard(entry: UserListEntry, position: Int, onClick: () -> Unit) {
 private fun ListStatusChip(statusKey: String, modifier: Modifier = Modifier) {
     val label = UserListStatuses.ALL.firstOrNull { it.href == statusKey }?.title ?: "В списке"
     val dotColor = when (statusKey) {
-        "watching" -> YummyPalette.Success
-        "will" -> YummyPalette.Accent
-        "watched" -> YummyPalette.RatingStar
-        "dropped" -> DroppedDot
-        "postponed" -> YummyPalette.TextDim
-        "fav" -> YummyPalette.RatingStar
+        "watch_now", "watching" -> Color(0xFFF4665C)
+        "will" -> Color(0xFF8E7BE8)
+        "watched" -> Color(0xFF35C77B)
+        "lost", "dropped" -> Color(0xFF7C8A99)
+        "postponed" -> Color(0xFFF2C744)
+        "fav" -> Color(0xFFD65CE0)
         else -> YummyPalette.TextFaint
     }
     Row(

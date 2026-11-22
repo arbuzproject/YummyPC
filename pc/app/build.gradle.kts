@@ -1,4 +1,4 @@
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+﻿import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -29,8 +29,8 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "YummyPC"
-            packageVersion = "0.1.0"
-            description = "Unofficial YummyAnime desktop client (port of YummyTV)"
+            packageVersion = "1.0.0"
+            description = "YummyPC — unofficial YummyAnime desktop client"
             vendor = "YummyPC community port"
             windows {
                 iconFile.set(project.file("src/main/resources/icon.ico"))

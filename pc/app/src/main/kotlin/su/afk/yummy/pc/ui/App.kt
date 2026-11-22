@@ -1,4 +1,4 @@
-// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
+﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.ui
 
 import androidx.compose.foundation.background
@@ -34,6 +34,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import kotlinx.coroutines.Job
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -104,12 +108,14 @@ fun App(
     // Экран-прокладка при быстром запуске с главной: пока идёт резолв потока.
     var quickLabel by remember { mutableStateOf<String?>(null) }
     var quickError by remember { mutableStateOf<String?>(null) }
+    var quickJob by remember { mutableStateOf<Job?>(null) }
 
     fun quickPlay(label: String, loader: suspend () -> PlaybackRequest?) {
         if (quickLabel != null) return
         quickLabel = label
         quickError = null
-        scope.launch {
+        quickJob?.cancel()
+        quickJob = scope.launch {
             val request = runCatching { loader() }.getOrNull()
             quickLabel = null
             if (request != null) playback = request else quickError = "Не удалось открыть плеер. Попробуйте ещё раз"

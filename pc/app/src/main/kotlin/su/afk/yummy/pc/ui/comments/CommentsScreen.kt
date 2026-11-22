@@ -1,4 +1,4 @@
-// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
+﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.ui.comments
 
 import androidx.compose.foundation.background
@@ -71,6 +71,9 @@ fun CommentsScreen(
     var loading by remember { mutableStateOf(true) }
     var loadingMore by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var expanded by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var replies by remember { mutableStateOf<Map<Int, List<CommentItem>>>(emptyMap()) }
+    var repliesLoading by remember { mutableStateOf<Set<Int>>(emptySet()) }
 
     suspend fun loadFirst(newSort: CommentSort) {
         loading = true
@@ -118,7 +121,35 @@ fun CommentsScreen(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(items, key = { it.id }) { comment -> CommentCard(comment) }
+                items(items, key = { it.id }) { comment ->
+                    CommentCard(
+                        comment = comment,
+                        replies = replies[comment.id].orEmpty(),
+                        expanded = comment.id in expanded,
+                        loadingReplies = comment.id in repliesLoading,
+                        onToggleReplies = {
+                            val id = comment.id
+                            if (id in expanded) {
+                                expanded = expanded - id
+                            } else {
+                                expanded = expanded + id
+                                if (replies[id] == null) {
+                                    repliesLoading = repliesLoading + id
+                                    scope.launch {
+                                        try {
+                                            val children = api.replies(id)
+                                            replies = replies + (id to children)
+                                        } catch (_: Exception) {
+                                            replies = replies + (id to emptyList())
+                                        } finally {
+                                            repliesLoading = repliesLoading - id
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    )
+                }
                 item {
                     Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
                         when {
@@ -190,7 +221,13 @@ private fun SortChip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CommentCard(comment: CommentItem) {
+private fun CommentCard(
+    comment: CommentItem,
+    replies: List<CommentItem>,
+    expanded: Boolean,
+    loadingReplies: Boolean,
+    onToggleReplies: () -> Unit,
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -233,14 +270,63 @@ private fun CommentCard(comment: CommentItem) {
         Text(comment.text, style = MaterialTheme.typography.bodyMedium, color = YummyPalette.Text)
         if (comment.childrenCount > 0) {
             Text(
-                "Ответов: ${comment.childrenCount}",
+                if (expanded) "▾ Ответы (${comment.childrenCount})" else "▸ Ответы (${comment.childrenCount})",
                 style = MaterialTheme.typography.labelSmall,
                 color = YummyPalette.Accent,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onToggleReplies)
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
             )
+            if (expanded) {
+                when {
+                    loadingReplies -> Text(
+                        "Загружаем ответы…",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = YummyPalette.TextDim,
+                    )
+                    replies.isEmpty() -> Text(
+                        "Ответов нет",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = YummyPalette.TextDim,
+                    )
+                    else -> Column(
+                        Modifier.padding(start = 18.dp, top = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        replies.forEach { reply ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(
+                                    Modifier.size(26.dp).clip(CircleShape).background(YummyPalette.SurfaceHigh),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (reply.avatarUrl != null) {
+                                        PosterImage(reply.avatarUrl, Modifier.fillMaxSize())
+                                    } else {
+                                        Text(
+                                            reply.authorName.take(1).uppercase(),
+                                            color = YummyPalette.Accent,
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    }
+                                }
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        reply.authorName.ifBlank { "Аноним" },
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = YummyPalette.Text,
+                                    )
+                                    Text(reply.text, style = MaterialTheme.typography.bodySmall, color = YummyPalette.Text)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
-
 private fun commentDate(unixSec: Long): String {
     if (unixSec <= 0) return ""
     return Instant.ofEpochSecond(unixSec).atZone(ZoneId.systemDefault()).format(COMMENT_DATE)

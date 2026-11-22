@@ -2,17 +2,30 @@
 
 Клиент YummyAnime для Windows на Kotlin + Compose Desktop со встроенным плеером на базе mpv.
 
+[![Скачать](https://img.shields.io/badge/⬇_Скачать-1.0.0-F08A4B?style=for-the-badge)](https://github.com/arbuzproject/YummyPC/releases/latest)
+[![Release](https://img.shields.io/github/v/release/arbuzproject/YummyPC?label=version&color=F08A4B)](https://github.com/arbuzproject/YummyPC/releases)
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/license-CC%20BY--NC%204.0-lightgrey)](LICENSE)
+
 > **Based on YummyTV — https://github.com/Helandy/YummyTV** (CC BY-NC 4.0).
 > См. `LICENSE` и `NOTICE`. Проект не связан с YummyAnime и не является официальным клиентом.
 
-![Главная](screenshots/v10-home.png)
+## Скачать
+
+Готовые сборки — в разделе **[Releases](https://github.com/arbuzproject/YummyPC/releases/latest)**:
+
+- **Portable** (`YummyPC-1.0.0-portable.zip`) — распаковать и запустить `YummyPC.exe`, ничего устанавливать не нужно.
+- **Установщик** (`YummyPC-1.0.0.msi`) — обычная установка в систему.
+
+Требования: Windows 10/11 x64. Плеер mpv входит в portable-сборку.
 
 ## Возможности
 
 - Каталог, новинки, топ, расписание, поиск с фильтрами и сортировкой.
-- Страница тайтла: рейтинги, скриншоты, озвучки и балансеры, серии, похожие тайтлы, жанры, подписка на новые серии, добавление в списки.
-- Плеер: переключение озвучки и балансера, выбор качества, автопропуск опенинга/эндинга с задержкой, автопереход к следующей серии, полный экран.
-- Профиль: статистика просмотра, активность, списки, история, коллекции, новости.
+- Страница тайтла: рейтинги, скриншоты, озвучки и балансеры, серии, похожие тайтлы, жанры, подписка на новые серии, списки.
+- Плеер: переключение озвучки и балансера, выбор качества, автопропуск опенинга/эндинга с задержкой, автопереход к следующей серии, полный экран, синхронизация просмотров.
+- Главная: продолжить просмотр, новые серии из ваших списков и новые серии всех тайтлов.
+- Профиль: статистика просмотра, активность, списки, история, коллекции.
+- Новости и комментарии.
 - Тёмная, светлая и системная темы оформления.
 - Локальная библиотека: списки и история сохраняются на устройстве, если нет соединения или входа в аккаунт.
 
@@ -20,10 +33,11 @@
 
 | | |
 |---|---|
-| ![Страница тайтла](screenshots/v10-details.png) | ![Новости](screenshots/v10-news.png) |
+| ![Главная](screenshots/v11-home.png) | ![Страница тайтла](screenshots/v11-details.png) |
+| ![Поиск](screenshots/v11-search.png) | ![Комментарии](screenshots/v11-comments.png) |
+| ![Плеер: качество](screenshots/v12-quality.png) | ![Новости](screenshots/v10-news.png) |
 | ![Профиль](screenshots/v10-profile.png) | ![Коллекции](screenshots/v10-collections.png) |
-| ![Поиск](screenshots/v10-search.png) | ![Настройки](screenshots/v10-settings.png) |
-| ![Светлая тема](screenshots/v10-home-light.png) | ![Светлая тема: настройки](screenshots/v10-settings-light.png) |
+| ![Светлая тема](screenshots/v10-home-light.png) | ![Настройки](screenshots/v10-settings.png) |
 
 ## Сборка
 

@@ -94,7 +94,7 @@ fun RankBadge(rank: Int?, modifier: Modifier = Modifier) {
             .background(Color(0xCC101014))
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
-        Text("#$rank", color = YummyPalette.Text, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        Text("#$rank", color = Color(0xFFF2F2F5), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
     }
 }
 
