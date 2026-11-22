@@ -76,8 +76,14 @@ object YummyConfig {
     val isAuthorized: Boolean
         get() = userToken.isNotBlank()
 
-    /** Адрес сервера задаётся локально (env YUMMYPC_BACKEND или settings.json), в репозитории не хранится. */
-    fun defaultBackendUrl(): String = System.getenv("YUMMYPC_BACKEND")?.trim()?.trimEnd('/') ?: ""
+    /**
+     * Адрес сервера: переменная окружения `YUMMYPC_BACKEND` важнее, затем `settings.json`,
+     * затем адрес, зашитый в релизную сборку (`BuildDefaults`, генерируется из `pc/secrets.properties`).
+     */
+    fun defaultBackendUrl(): String {
+        val fromEnv = System.getenv("YUMMYPC_BACKEND")?.trim()?.trimEnd('/').orEmpty()
+        return fromEnv.ifBlank { BuildDefaults.BACKEND_URL }
+    }
 
     fun load() {
         val file = settingsFile

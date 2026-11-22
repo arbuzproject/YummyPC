@@ -1,4 +1,4 @@
-// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
+﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.ui.settings
 
 import androidx.compose.foundation.background
@@ -52,7 +52,7 @@ fun SettingsScreen() {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp)) {
         Text("Настройки", style = MaterialTheme.typography.headlineLarge, color = YummyPalette.Text)
         Text(
-            "Часть настроек ТВ-версии YummyTV: язык контента, размер карточек, рейтинги, автопереход и пропуск опенингов.",
+            "Язык контента, размер карточек, рейтинги, автопереход между сериями и пропуск опенингов.",
             style = MaterialTheme.typography.bodyMedium,
             color = YummyPalette.TextDim,
         )

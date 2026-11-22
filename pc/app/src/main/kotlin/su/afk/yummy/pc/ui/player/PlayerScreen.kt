@@ -142,7 +142,6 @@ fun PlayerScreen(
         mutableStateOf<String?>(null)
     }
     var controlsVisible by remember { mutableStateOf(true) }
-    var qualityDialogOpen by remember { mutableStateOf(false) }
     // URL, для которого просмотр уже отправлен на сайт: не спамим повторными PUT.
     var reportedForUrl by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -166,7 +165,6 @@ fun PlayerScreen(
         // а отчёт о просмотре не срабатывает по старой позиции на новом URL.
         state = MpvPlaybackState()
         error = null
-        qualityDialogOpen = false
         var hwnd = 0L
         repeat(40) {
             if (hwnd == 0L && canvas.isDisplayable) {
@@ -269,7 +267,7 @@ fun PlayerScreen(
             if (System.currentTimeMillis() - lastActive > 3000 &&
                 !state.paused &&
                 panel == PlayerPanel.NONE &&
-                !qualityDialogOpen
+                true
             ) {
                 controlsVisible = false
             }
@@ -399,7 +397,21 @@ fun PlayerScreen(
                         }
                         player?.setSpeed(speed)
                     },
-                    onQuality = { if (request.qualities.isNotEmpty()) qualityDialogOpen = true },
+                    onQuality = {
+                        val list = request.qualities
+                        if (list.size > 1) {
+                            val current = list.indexOfFirst { it.second == request.url }.takeIf { it >= 0 } ?: 0
+                            val next = list[(current + 1) % list.size]
+                            reportedForUrl = null
+                            val embedded = player
+                            val position = state.positionSec
+                            if (embedded != null && embedded.loadFile(next.second).isSuccess) {
+                                embedded.seekTo(position)
+                            }
+                            request = request.copy(url = next.second, qualityLabel = next.first)
+                            switchStatus = "Качество: ${next.first}"
+                        }
+                    },
                     onSources = { panel = PlayerPanel.SOURCES },
                     onFullscreen = { windowControl.toggleFullscreen() },
                     onSkipOpening = { request.openingSkip?.let { player?.seekTo(it.endSec.toDouble()) } },
@@ -418,28 +430,6 @@ fun PlayerScreen(
         }
     }
 
-    if (qualityDialogOpen && request.qualities.isNotEmpty()) {
-        QualityDialog(
-            qualities = request.qualities,
-            currentUrl = request.url,
-            currentLabel = request.qualityLabel,
-            onSelect = { url, label ->
-                qualityDialogOpen = false
-                reportedForUrl = null
-                val embedded = player
-                val position = state.positionSec
-                if (embedded != null) {
-                    // Меняем поток «на лету» в том же процессе mpv: рендер-поверхность
-                    // не пересоздаётся, поэтому экран не чернеет.
-                    if (embedded.loadFile(url).isSuccess) {
-                        embedded.seekTo(position)
-                    }
-                }
-                request = request.copy(url = url, qualityLabel = label)
-            },
-            onDismiss = { qualityDialogOpen = false },
-        )
-    }
 }
 
 @Composable

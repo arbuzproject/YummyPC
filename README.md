@@ -1,4 +1,4 @@
-# YummyPC — неофициальный десктоп-клиент YummyAnime
+﻿# YummyPC — неофициальный десктоп-клиент YummyAnime
 
 Клиент YummyAnime для Windows на Kotlin + Compose Desktop со встроенным плеером на базе mpv.
 
@@ -53,8 +53,10 @@ cd pc
 Рядом с `YummyPC.exe` положите `mpv\mpv.exe` и `mpv\mpv.com`.
 
 Клиент не хранит токены сервиса: они остаются на серверной части (`backend/`).
-Адрес своего сервера укажите локально — в переменной окружения `YUMMYPC_BACKEND`
-или в `%USERPROFILE%\.yummypc\settings.json` (`backendUrl`). В репозитории адресов нет.
+
+**Готовые релизные сборки уже настроены** — скачайте и пользуйтесь, ничего указывать не нужно.
+При сборке из исходников свой адрес сервера задаётся локально (`YUMMYPC_BACKEND`
+или `%USERPROFILE%\.yummypc\settings.json` → `backendUrl`); в репозитории адресов нет.
 
 ## Структура
 
