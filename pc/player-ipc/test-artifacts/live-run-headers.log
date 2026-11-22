@@ -1,0 +1,90 @@
+> Task :player-ipc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :player-ipc:compileKotlin UP-TO-DATE
+> Task :player-ipc:compileJava NO-SOURCE
+> Task :player-ipc:processResources NO-SOURCE
+> Task :player-ipc:classes UP-TO-DATE
+
+> Task :player-ipc:run
+[cli] player-ipc: mpv JSON IPC через JNA overlapped named pipe
+[cli] pipe=yummypc-test, url=https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+[cli] seek=10.00 c, connect-timeout=15000 ms
+[state] pos=0.00 dur=0.00 paused=true loaded=false ended=false error=none
+[pipe] connected: \\.\pipe\yummypc-test
+[ipc] -> #1 {"command":["get_property","idle-active"],"request_id":1}
+[ipc] <- #1 error=success data=true
+[ipc] -> #2 {"command":["observe_property",1,"time-pos"],"request_id":2}
+[ipc] <- #2 error=success
+[ipc] -> #3 {"command":["observe_property",2,"duration"],"request_id":3}
+[ipc] <- #3 error=success
+[ipc] <- event property-change name=duration id=2
+[ipc] -> #4 {"command":["observe_property",3,"pause"],"request_id":4}
+[ipc] <- #4 error=success
+[ipc] <- event property-change name=pause id=3 data=true
+[ipc] -> #5 {"command":["observe_property",4,"eof-reached"],"request_id":5}
+[ipc] <- #5 error=success
+[ipc] <- event property-change name=eof-reached id=4
+[ipc] connected: \\.\pipe\yummypc-test
+[cli] connect -> true
+[ipc] -> #6 {"command":["set_property","http-header-fields",["X-Test-Header: yummypc"]],"request_id":6}
+[ipc] <- #6 error=success
+[ipc] http-header-fields: применено 1 заголовков (X-Test-Header: yummypc)
+[ipc] -> #7 {"command":["loadfile","https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8","replace"],"request_id":7}
+[ipc] <- #7 error=success data={"playlist_entry_id":1}
+[ipc] <- event start-file
+[cli] loadfile -> true
+[ipc] <- event audio-reconfig
+[ipc] <- event audio-reconfig
+[ipc] <- event file-loaded
+[ipc] <- event property-change name=duration id=2 data=634.584000
+[ipc] <- event property-change name=eof-reached id=4 data=false
+[state] pos=0.00 dur=634.58 paused=true loaded=true ended=false error=none
+[cli] file-loaded за 1746 ms: pos=0.00 dur=634.58 paused=true loaded=true ended=false error=none
+[cli] duration=634.58 c
+[ipc] <- event audio-reconfig
+[ipc] <- event video-reconfig
+[ipc] <- event video-reconfig
+[ipc] <- event playback-restart
+[cli] до перемотки: pos=0.02 dur=634.58 paused=true loaded=true ended=false error=none
+[ipc] -> #8 {"command":["seek",10.0,"absolute"],"request_id":8}
+[ipc] <- #8 error=success data=null
+[state] pos=10.00 dur=634.58 paused=true loaded=true ended=false error=none
+[ipc] <- event seek
+[ipc] <- event playback-restart
+[cli] seekTo(10.00) -> true, pos=10.01 dur=634.58 paused=true loaded=true ended=false error=none
+[ipc] -> #9 {"command":["get_property","pause"],"request_id":9}
+[ipc] <- #9 error=success data=true
+[ipc] togglePause: pause было true
+[ipc] -> #10 {"command":["set_property","pause",false],"request_id":10}
+[ipc] <- #10 error=success
+[ipc] <- event property-change name=pause id=3 data=false
+[state] pos=10.02 dur=634.58 paused=false loaded=true ended=false error=none
+[cli] togglePause -> true (сняли паузу); pos=10.06 dur=634.58 paused=false loaded=true ended=false error=none
+[ipc] -> #11 {"command":["get_property","pause"],"request_id":11}
+[ipc] <- #11 error=success data=false
+[ipc] togglePause: pause было false
+[ipc] -> #12 {"command":["set_property","pause",true],"request_id":12}
+[ipc] <- #12 error=success
+[ipc] <- event property-change name=pause id=3 data=true
+[cli] togglePause -> true (ожидаем паузу), pos=10.06 dur=634.58 paused=true loaded=true ended=false error=none
+[ipc] -> #13 {"command":["set_property","speed",1.25],"request_id":13}
+[ipc] <- #13 error=success
+[cli] setSpeed(1.25) -> true
+[ipc] -> #14 {"command":["set_property","volume",70],"request_id":14}
+[ipc] <- #14 error=success
+[cli] setVolume(70) -> true
+[cli] слушаем обновления MpvState 500 ms
+[cli] итоговое состояние: pos=10.06 dur=634.58 paused=true loaded=true ended=false error=none
+[cli] итог: connect=true, loadfile=true, duration=634.58 c, seek=true, play=true, pause=true, position=10.06 c, paused=true
+[cli] отключено; isConnected=false
+
+[Incubating] Problems report is available at: file:///E:/neuiroslop/yummypc/pc/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.9.2/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 5s
+2 actionable tasks: 1 executed, 1 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.9.2/userguide/configuration_cache_enabling.html

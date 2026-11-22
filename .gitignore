@@ -1,0 +1,36 @@
+# Gradle / Kotlin (только каталоги сборки)
+/pc/.gradle/
+/pc/.kotlin/
+/pc/build/
+/pc/api/build/
+/pc/app/build/
+/pc/extractors/build/
+/pc/player-ipc/build/
+/.gradle/
+/.kotlin/
+/build/
+
+# Локальные бинарники и тяжёлые артефакты (собираются отдельно)
+/dist/
+/apk/
+/src/
+/tools/
+*.zip
+
+# Секреты и служебное
+/gittoken.txt
+/.env
+*.env
+/.tmp-kodik/
+
+# Дампы API (могут содержать личные данные аккаунта)
+/pc/samples/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# ОС
+Thumbs.db
+desktop.ini
