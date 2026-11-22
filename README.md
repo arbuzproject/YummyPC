@@ -35,7 +35,7 @@
 |---|---|
 | ![Главная](screenshots/v11-home.png) | ![Страница тайтла](screenshots/v11-details.png) |
 | ![Поиск](screenshots/v11-search.png) | ![Комментарии](screenshots/v11-comments.png) |
-| ![Плеер: качество](screenshots/v12-quality.png) | ![Новости](screenshots/v10-news.png) |
+| ![Новости](screenshots/v10-news.png) |
 | ![Профиль](screenshots/v10-profile.png) | ![Коллекции](screenshots/v10-collections.png) |
 | ![Светлая тема](screenshots/v10-home-light.png) | ![Настройки](screenshots/v10-settings.png) |
 
