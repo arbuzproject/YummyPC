@@ -295,6 +295,14 @@ fun DetailsScreen(
                                                 },
                                                 onClick = {
                                                     listMenuOpen = false
+                                                    // Кнопка обновляется сразу, не дожидаясь сети.
+                                                    if (listId < 0) {
+                                                        isFav = true
+                                                    } else {
+                                                        isFav = false
+                                                        listHref = listStatusHrefFor(listId)
+                                                    }
+                                                    status = null
                                                     scope.launch {
                                                         try {
                                                             if (listId < 0) {
@@ -303,7 +311,6 @@ fun DetailsScreen(
                                                                 api.setListStatus(page.id, listId)
                                                             }
                                                             repository.invalidateCache()
-                                                            status = "Список: $label"
                                                         } catch (cancelled: CancellationException) {
                                                             throw cancelled
                                                         } catch (error: Exception) {

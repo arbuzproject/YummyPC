@@ -1,4 +1,4 @@
-# YummyPC
+﻿# YummyPC
 
 Неофициальный клиент YummyAnime для Windows: тёмный телевизионный интерфейс, встроенный плеер, списки, история, коллекции, новости и комментарии.
 
@@ -15,6 +15,7 @@
 | ![Коллекции](screenshots/collections.png) | ![История](screenshots/history.png) |
 | ![Новости](screenshots/news.png) | ![Поиск](screenshots/search.png) |
 | ![Настройки](screenshots/settings.png) | ![Страница тайтла](screenshots/details.png) |
+| ![Профиль](screenshots/profile.png) | ![Статистика профиля](screenshots/profile-stats.png) |
 
 ## Плеер
 
