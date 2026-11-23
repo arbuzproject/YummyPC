@@ -116,6 +116,10 @@ fun togglePause() {
         bridge?.setVolume(percent.coerceIn(0, 130))
     }
 
+    /** Универсальное свойство mpv (субтитры, масштаб и т.п.). */
+    fun setProperty(name: String, value: Any?): Boolean =
+        bridge?.setProperty(name, value) ?: false
+
     fun dispose() {
         runCatching { bridge?.quit() }
         val p = process

@@ -103,7 +103,9 @@ class YaniRepository(
         cached("top:$type:$limit:$offset") {
             api.search(
                 types = listOfNotNull(type),
-                sort = "top",
+                // «Топ» — по рейтингу от большего к меньшему: API sort=top отдаёт
+                // нерейтинговые тайтлы с нулями вперёд, а нужен именно топ по оценке.
+                sort = "rating",
                 sortForward = false,
                 limit = limit,
                 offset = offset,

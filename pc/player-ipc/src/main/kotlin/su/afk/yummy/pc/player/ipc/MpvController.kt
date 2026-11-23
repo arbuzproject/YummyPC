@@ -197,6 +197,10 @@ class MpvController(
     fun setVolume(volume: Int): Boolean =
         sendCommand(listOf("set_property", "volume", volume)).ok
 
+    /** Универсальная установка свойства mpv (субтитры, масштаб и т.п.). */
+    fun setProperty(name: String, value: Any?): Boolean =
+        sendCommand(listOf("set_property", name, value)).ok
+
     /**
      * Просит mpv завершиться (`quit`). Ответ не ждём: mpv может закрыть канал раньше, чем
      * отправит его (см. `pc/docs/player.md` §6.1).

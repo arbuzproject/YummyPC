@@ -27,6 +27,9 @@ interface MpvIpcBridge {
     /** Громкость mpv в процентах (0–130). */
     fun setVolume(volume: Int): Boolean
 
+    /** Универсальная установка свойства mpv (субтитры, масштаб и т.п.). */
+    fun setProperty(name: String, value: Any?): Boolean
+
     fun quit()
     val state: StateFlow<MpvPlaybackState>
 }

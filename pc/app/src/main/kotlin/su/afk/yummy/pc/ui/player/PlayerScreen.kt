@@ -304,6 +304,48 @@ fun PlayerScreen(
         if (state.ended && YummyConfig.autoplayNextEpisode) playNextEpisode()
     }
 
+    // Горячие клавиши: пробел — пауза, ←/→ — ±10 секунд, ↑/↓ — ±5% громкости.
+    DisposableEffect(Unit) {
+        val dispatcher = java.awt.KeyEventDispatcher { event ->
+            if (event.id != java.awt.event.KeyEvent.KEY_PRESSED) {
+                false
+            } else {
+                when (event.keyCode) {
+                    java.awt.event.KeyEvent.VK_SPACE -> {
+                        player?.togglePause()
+                        true
+                    }
+                    java.awt.event.KeyEvent.VK_LEFT -> {
+                        player?.seekTo((state.positionSec - 10.0).coerceAtLeast(0.0))
+                        true
+                    }
+                    java.awt.event.KeyEvent.VK_RIGHT -> {
+                        val max = if (state.durationSec > 0) state.durationSec else state.positionSec + 10.0
+                        player?.seekTo((state.positionSec + 10.0).coerceAtMost(max))
+                        true
+                    }
+                    java.awt.event.KeyEvent.VK_UP -> {
+                        volume = (volume + 5).coerceAtMost(130)
+                        player?.setVolume(volume)
+                        YummyConfig.updatePreferences(volume = volume)
+                        true
+                    }
+                    java.awt.event.KeyEvent.VK_DOWN -> {
+                        volume = (volume - 5).coerceAtLeast(0)
+                        player?.setVolume(volume)
+                        YummyConfig.updatePreferences(volume = volume)
+                        true
+                    }
+                    else -> false
+                }
+            }
+        }
+        java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(dispatcher)
+        onDispose {
+            java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(dispatcher)
+        }
+    }
+
     // Прозрачный оверлей поверх видео. mpv рисует в нативном дочернем окне, поэтому пульт —
     // отдельное прозрачное окно ОС: появляется при наведении вниз, прячется сам.
     val overlayWindow = remember {
@@ -316,30 +358,14 @@ fun PlayerScreen(
                 onTogglePause = { player?.togglePause() },
                 onSeek = { seconds -> player?.seekTo(seconds.coerceAtLeast(0.0)) },
                 onSeekBy = { delta ->
-                    val target = (state.positionSec + delta).coerceIn(0.0, state.durationSec)
-                    player?.seekTo(target)
+                    val max = if (state.durationSec > 0) state.durationSec else state.positionSec + 10.0
+                    player?.seekTo((state.positionSec + delta).coerceIn(0.0, max))
                 },
                 onVolume = { value ->
                     volume = value
                     player?.setVolume(value)
                     YummyConfig.updatePreferences(volume = value)
                 },
-                onQuality = {
-                    val list = request.qualities
-                    if (list.size > 1) {
-                        val currentIndex = list.indexOfFirst { it.second == request.url }.takeIf { it >= 0 } ?: 0
-                        val next = list[(currentIndex + 1) % list.size]
-                        reportedForUrl = null
-                        val embedded = player
-                        val position = state.positionSec
-                        if (embedded != null && embedded.loadFile(next.second).isSuccess) {
-                            embedded.seekTo(position)
-                        }
-                        request = request.copy(url = next.second, qualityLabel = next.first)
-                        switchStatus = "Качество: ${next.first}"
-                    }
-                },
-                onSources = { panel = PlayerPanel.SOURCES },
                 onNext = { playNextEpisode() },
                 onFullscreen = { windowControl.toggleFullscreen() },
                 onClose = {
@@ -348,18 +374,46 @@ fun PlayerScreen(
                     }
                     onClose()
                 },
+                onSelectDubbing = { name ->
+                    val video = request.episodeVideos.firstOrNull { it.dubbing == name }
+                    if (video != null) switchTo(video)
+                },
+                onSelectPlayer = { name ->
+                    val video = request.episodeVideos.firstOrNull { it.player == name }
+                    if (video != null) switchTo(video)
+                },
+                onSelectQuality = { url, label ->
+                    reportedForUrl = null
+                    val embedded = player
+                    val position = state.positionSec
+                    if (embedded != null && embedded.loadFile(url).isSuccess) {
+                        embedded.seekTo(position)
+                    }
+                    request = request.copy(url = url, qualityLabel = label)
+                },
+                onSpeed = { value -> player?.setSpeed(value) },
+                onSetting = { key, value ->
+                    when (key) {
+                        "yummypc-adaptive", "yummypc-volume-stabilization" -> Unit
+                        else -> player?.setProperty(key, value)
+                    }
+                },
             )
         }
     }
     SideEffect { overlayWindow?.setPlayback(state) }
     SideEffect { overlayWindow?.setVolume(volume) }
-    SideEffect { overlayWindow?.setQuality(request.qualityLabel) }
-    SideEffect { overlayWindow?.setTitle(request.title) }
-    SideEffect { overlayWindow?.setSuppressed(panel != PlayerPanel.NONE || error != null) }
-    DisposableEffect(Unit) {
-        onDispose { overlayWindow?.dispose() }
+    SideEffect { overlayWindow?.setTitle(request.pageTitle.ifBlank { request.title }, request.episodeNumber) }
+    SideEffect {
+        overlayWindow?.setSources(
+            dubbings = request.episodeVideos.map { it.dubbing }.filter { it.isNotBlank() }.distinct(),
+            players = request.episodeVideos.map { it.player }.filter { it.isNotBlank() }.distinct(),
+            dubbing = request.dubbingName,
+            player = request.playerName,
+        )
     }
-
+    SideEffect { overlayWindow?.setQualities(request.qualities, request.qualityLabel) }
+    SideEffect { overlayWindow?.setSuppressed(panel != PlayerPanel.NONE || error != null) }
     Column(Modifier.fillMaxSize().background(Color.Black)) {
         Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black)) {
             SwingPanel(modifier = Modifier.fillMaxSize(), background = Color.Black, factory = { canvas })

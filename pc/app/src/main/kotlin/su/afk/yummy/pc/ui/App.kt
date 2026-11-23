@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,6 +35,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -49,8 +53,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import su.afk.yummy.pc.api.UserProfile
 import su.afk.yummy.pc.api.LocalLibrary
+import su.afk.yummy.pc.api.UpdateChecker
+import su.afk.yummy.pc.api.UpdateInfo
 import su.afk.yummy.pc.api.YaniApi
 import su.afk.yummy.pc.api.YaniAuthApi
+import su.afk.yummy.pc.api.AppInfo
 import su.afk.yummy.pc.api.YaniRepository
 import su.afk.yummy.pc.api.YummyConfig
 import su.afk.yummy.pc.player.PlaybackRequest
@@ -109,6 +116,13 @@ fun App(
     var quickLabel by remember { mutableStateOf<String?>(null) }
     var quickError by remember { mutableStateOf<String?>(null) }
     var quickJob by remember { mutableStateOf<Job?>(null) }
+    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    var updateDismissed by remember { mutableStateOf(false) }
+
+    // Проверка обновлений при запуске (последний релиз GitHub).
+    LaunchedEffect(Unit) {
+        updateInfo = runCatching { UpdateChecker().check() }.getOrNull()
+    }
 
     fun quickPlay(label: String, loader: suspend () -> PlaybackRequest?) {
         if (quickLabel != null) return
@@ -160,6 +174,38 @@ fun App(
                     Text("Готовим видеопоток…", color = YummyPalette.TextDim, style = MaterialTheme.typography.bodySmall)
                 }
             }
+        }
+        val pendingUpdate = updateInfo
+        if (pendingUpdate != null && !updateDismissed) {
+            AlertDialog(
+                onDismissRequest = { updateDismissed = true },
+                title = { Text("Доступно обновление ${pendingUpdate.version}", color = YummyPalette.Text) },
+                text = {
+                    Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                        Text("Текущая версия: ${AppInfo.VERSION}", color = YummyPalette.TextDim)
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            pendingUpdate.notes.ifBlank { pendingUpdate.name },
+                            color = YummyPalette.Text,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        runCatching {
+                            java.awt.Desktop.getDesktop().browse(
+                                java.net.URI(pendingUpdate.downloadUrl ?: pendingUpdate.pageUrl),
+                            )
+                        }
+                        updateDismissed = true
+                    }) { Text("Скачать", color = YummyPalette.Accent) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { updateDismissed = true }) { Text("Позже", color = YummyPalette.TextDim) }
+                },
+                containerColor = YummyPalette.BackgroundElevated,
+            )
         }
         Row(Modifier.fillMaxSize().background(YummyPalette.Background)) {
             NavigationRail(

@@ -1,4 +1,4 @@
-﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
+// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.ui.settings
 
 import androidx.compose.foundation.background
@@ -29,6 +29,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import su.afk.yummy.pc.api.YummyConfig
+import su.afk.yummy.pc.api.isNewerVersion
+import su.afk.yummy.pc.api.UpdateInfo
+import su.afk.yummy.pc.api.UpdateChecker
+import su.afk.yummy.pc.api.AppInfo
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.Button
 import su.afk.yummy.pc.ui.theme.YummyThemeMode
 import su.afk.yummy.pc.ui.theme.YummyThemeController
 import androidx.compose.runtime.produceState
@@ -48,6 +55,20 @@ fun SettingsScreen() {
     var skipOpening by remember { mutableStateOf(YummyConfig.autoSkipOpening) }
     var skipEnding by remember { mutableStateOf(YummyConfig.autoSkipEnding) }
     var skipDelay by remember { mutableStateOf(YummyConfig.skipDelaySec) }
+    var checkingUpdates by remember { mutableStateOf(false) }
+    var latestRelease by remember { mutableStateOf<UpdateInfo?>(null) }
+    var updateChecked by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    fun checkUpdates() {
+        if (checkingUpdates) return
+        checkingUpdates = true
+        scope.launch {
+            latestRelease = runCatching { UpdateChecker().latest(force = true) }.getOrNull()
+            checkingUpdates = false
+            updateChecked = true
+        }
+    }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp)) {
         Text("Настройки", style = MaterialTheme.typography.headlineLarge, color = YummyPalette.Text)
@@ -145,6 +166,33 @@ fun SettingsScreen() {
         )
 
         Spacer(Modifier.height(8.dp))
+        SectionHeader("Обновления")
+        SettingRow("Версия ${AppInfo.VERSION}") {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                val fresh = latestRelease
+                when {
+                    checkingUpdates -> Text("Проверяем…", color = YummyPalette.TextDim, style = MaterialTheme.typography.bodySmall)
+                    fresh != null && isNewerVersion(fresh.version, AppInfo.VERSION) -> {
+                        Text("Доступно обновление ${fresh.version}", color = YummyPalette.Accent, style = MaterialTheme.typography.bodySmall)
+                        Button(
+                            onClick = {
+                                runCatching {
+                                    java.awt.Desktop.getDesktop().browse(java.net.URI(fresh.downloadUrl ?: fresh.pageUrl))
+                                }
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                        ) { Text("Обновить") }
+                    }
+                    updateChecked -> Text("У вас последняя версия", color = YummyPalette.TextDim, style = MaterialTheme.typography.bodySmall)
+                }
+                Button(
+                    onClick = { checkUpdates() },
+                    enabled = !checkingUpdates,
+                    shape = RoundedCornerShape(10.dp),
+                ) { Text("Проверить обновления") }
+            }
+        }
+
         SectionHeader("Подключение")
         val connected by produceState<Boolean?>(null) {
             value = runCatching {
