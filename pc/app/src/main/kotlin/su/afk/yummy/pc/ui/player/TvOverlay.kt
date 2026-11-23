@@ -1,4 +1,4 @@
-﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
+// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.ui.player
 
 import androidx.compose.foundation.background
@@ -94,6 +94,13 @@ fun TvPlayerOverlay(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onSkip: (Double) -> Unit,
+    onCancelAutoSkip: (() -> Unit)? = null,
+    autoSkipOpening: Boolean = true,
+    autoSkipEnding: Boolean = false,
+    skipDelaySec: Int = 0,
+    onToggleAutoSkipOpening: () -> Unit = {},
+    onToggleAutoSkipEnding: () -> Unit = {},
+    onSkipDelay: (Int) -> Unit = {},
     onTogglePanel: (TvPanel) -> Unit,
     onSelectDubbing: (String) -> Unit,
     onSelectPlayer: (String) -> Unit,
@@ -140,16 +147,20 @@ fun TvPlayerOverlay(
             }
         }
 
-        // Кнопки пропуска опенинга/эндинга.
+        // Кнопки пропуска опенинга/эндинга — в правом углу.
         Row(
-            Modifier.align(Alignment.BottomCenter).padding(bottom = 132.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.align(Alignment.BottomEnd).padding(end = 22.dp, bottom = 132.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             skipOpening?.let {
                 TvButton("Пропустить опенинг", accentOutline = true) { onSkip(it.endSec.toDouble()) }
             }
             skipEnding?.let {
                 TvButton("Пропустить эндинг", accentOutline = true) { onSkip(it.endSec.toDouble()) }
+            }
+            if (onCancelAutoSkip != null) {
+                TvButton("Отменить пропуск", accentOutline = false) { onCancelAutoSkip() }
             }
         }
 
@@ -288,6 +299,16 @@ fun TvPlayerOverlay(
                     onSubtitleBackground(if (subtitleBackground == "#00000000") "#80000000" else "#00000000")
                 }
                 SettingsRow("Стабилизация громкости", "Выкл") { /* визуальная настройка, как в референсе */ }
+                SettingsRow("Автопропуск опенинга", if (autoSkipOpening) "Вкл" else "Выкл") { onToggleAutoSkipOpening() }
+                SettingsRow("Автопропуск эндинга", if (autoSkipEnding) "Вкл" else "Выкл") { onToggleAutoSkipEnding() }
+                Text("Задержка автопропуска: $skipDelaySec с", color = Dim, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
+                Slider(
+                    value = skipDelaySec.coerceIn(1, 10).toFloat(),
+                    onValueChange = { onSkipDelay(it.toInt().coerceIn(1, 10)) },
+                    valueRange = 1f..10f,
+                    steps = 8,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                )
             }
 
             TvPanel.NONE -> Unit
@@ -341,13 +362,20 @@ private fun TvPopup(title: String, modifier: Modifier, content: @Composable () -
     Column(
         modifier
             .width(430.dp)
+            .heightIn(max = 560.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(PanelBg)
             .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(title, color = Dim, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-        content()
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            content()
+        }
     }
 }
 

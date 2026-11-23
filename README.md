@@ -33,47 +33,4 @@
 
 | | |
 |---|---|
-| ![Главная](screenshots/v11-home.png) | ![Страница тайтла](screenshots/v11-details.png) |
-| ![Поиск](screenshots/v11-search.png) | ![Комментарии](screenshots/v11-comments.png) |
-| ![Новости](screenshots/v10-news.png) |
-| ![Профиль](screenshots/v10-profile.png) | ![Коллекции](screenshots/v10-collections.png) |
-| ![Светлая тема](screenshots/v10-home-light.png) | ![Настройки](screenshots/v10-settings.png) |
-
-## Сборка
-
-Требования: Windows 10/11 x64, **JDK 21**, **mpv**.
-
-```powershell
-$env:JAVA_HOME = 'C:\path\to\jdk-21'
-cd pc
-.\gradlew.bat :app:createDistributable
-```
-
-Готовая сборка появится в `pc\app\build\compose\binaries\main\app\YummyPC\`.
-Рядом с `YummyPC.exe` положите `mpv\mpv.exe` и `mpv\mpv.com`.
-
-Клиент не хранит токены сервиса: они остаются на серверной части (`backend/`).
-
-**Готовые релизные сборки уже настроены** — скачайте и пользуйтесь, ничего указывать не нужно.
-При сборке из исходников свой адрес сервера задаётся локально (`YUMMYPC_BACKEND`
-или `%USERPROFILE%\.yummypc\settings.json` → `backendUrl`); в репозитории адресов нет.
-
-## Структура
-
-| Каталог | Что это |
-|---|---|
-| `pc/` | Gradle-проект клиента: `:api`, `:app`, `:extractors`, `:player-ipc` |
-| `pc/docs/` | Документация: контракт API, экстракторы, плеер, правила порта |
-| `backend/` | Серверная часть на Go: прокси к API и внешние балансеры |
-| `screenshots/` | Скриншоты приложения |
-
-## О проекте
-
-Проект создан с помощью нейросетей: код, интерфейс и документация разрабатывались с использованием ИИ
-(DeepSeek и другие модели). Возможны ошибки и неполные сценарии — используйте на свой риск.
-
-## Лицензия
-
-Производная работа от [YummyTV](https://github.com/Helandy/YummyTV), распространяется на условиях
-**CC BY-NC 4.0**: свободное использование, изменение и распространение только в некоммерческих целях,
-с указанием авторства. Полный текст — в `LICENSE`.
+| ![Главная](screenshots/home.png) | ![Плеер](screenshots/player.png) |

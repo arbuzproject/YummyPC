@@ -1,4 +1,4 @@
-﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
+// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.ui.player
 
 import androidx.compose.foundation.Image
@@ -237,21 +237,35 @@ fun PlayerScreen(
         )
     }
 
-    // Автопропуск опенинга/эндинга с настраиваемой задержкой.
+    // Автопропуск опенинга/эндинга с настраиваемой задержкой и возможностью отмены.
+    var autoSkipUndo by remember { mutableStateOf<Double?>(null) }
     LaunchedEffect(state.positionSec, request.openingSkip, request.endingSkip) {
         if (!state.loaded || state.paused || state.ended) return@LaunchedEffect
         val pos = state.positionSec
         val delaySec = YummyConfig.skipDelaySec.toDouble()
         val opening = request.openingSkip
         val ending = request.endingSkip
-        val skipTo = when {
+        val zoneStart = when {
             YummyConfig.autoSkipOpening && opening != null &&
-                pos >= opening.startSec + delaySec && pos < opening.endSec - 2.0 -> opening.endSec.toDouble()
+                pos >= opening.startSec + delaySec && pos < opening.endSec - 2.0 -> opening.startSec.toDouble()
             YummyConfig.autoSkipEnding && ending != null &&
-                pos >= ending.startSec + delaySec && pos < ending.endSec - 2.0 -> ending.endSec.toDouble()
+                pos >= ending.startSec + delaySec && pos < ending.endSec - 2.0 -> ending.startSec.toDouble()
             else -> null
         }
-        if (skipTo != null) player?.seekTo(skipTo)
+        if (zoneStart != null && autoSkipUndo != zoneStart) {
+            val end = if (YummyConfig.autoSkipOpening && opening != null && pos < opening.endSec &&
+                pos >= opening.startSec + delaySec) opening.endSec.toDouble() else ending?.endSec?.toDouble()
+            if (end != null) {
+                player?.seekTo(end)
+                autoSkipUndo = zoneStart
+            }
+        }
+    }
+    LaunchedEffect(autoSkipUndo) {
+        if (autoSkipUndo != null) {
+            kotlinx.coroutines.delay(8000)
+            autoSkipUndo = null
+        }
     }
 
     // Синхронизация просмотра с сайтом: один PUT на текущий поток, когда серия реально
@@ -488,6 +502,25 @@ fun PlayerScreen(
             onSkip = { seconds ->
                 player?.seekTo(seconds)
                 controlsVisible = true
+            },
+            onCancelAutoSkip = autoSkipUndo?.let { startSeconds ->
+                {
+                    player?.seekTo(startSeconds)
+                    autoSkipUndo = null
+                    controlsVisible = true
+                }
+            },
+            autoSkipOpening = YummyConfig.autoSkipOpening,
+            autoSkipEnding = YummyConfig.autoSkipEnding,
+            skipDelaySec = YummyConfig.skipDelaySec,
+            onToggleAutoSkipOpening = {
+                YummyConfig.updatePreferences(autoSkipOpening = !YummyConfig.autoSkipOpening)
+            },
+            onToggleAutoSkipEnding = {
+                YummyConfig.updatePreferences(autoSkipEnding = !YummyConfig.autoSkipEnding)
+            },
+            onSkipDelay = { seconds ->
+                YummyConfig.updatePreferences(skipDelaySec = seconds.coerceIn(1, 10))
             },
             onTogglePanel = { target ->
                 tvPanel = if (tvPanel == target) TvPanel.NONE else target
