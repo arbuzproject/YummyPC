@@ -1,16 +1,10 @@
-﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
+// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.api
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 /** Информация о новом релизе на GitHub. */
 data class UpdateInfo(
@@ -23,10 +17,13 @@ data class UpdateInfo(
 )
 
 /**
- * Проверка обновлений через последний релиз GitHub.
+ * Проверка обновлений через GitHub.
  *
- * Работает без авторизации (репозиторий публичный), кэширует ответ на 10 минут, чтобы
- * не дёргать API при каждом переходе по экранам.
+ * Основной источник — Atom-лента релизов (`/releases.atom`): она не подпадает под лимиты
+ * REST API (60 запросов/час на IP), из-за которых раньше проверка молча отвечала
+ * «обновлений нет». Если лента недоступна — запасной путь через REST API.
+ *
+ * Ответ кэшируется в памяти и в `~/.yummypc/update-cache.txt` на 10 минут.
  */
 class UpdateChecker(private val client: HttpClient = YaniHttp.client) {
 
@@ -38,52 +35,145 @@ class UpdateChecker(private val client: HttpClient = YaniHttp.client) {
     suspend fun latest(force: Boolean = false): UpdateInfo? {
         val now = System.currentTimeMillis()
         if (!force) {
-            cached?.let { (at, value) ->
-                if (now - at < CACHE_MS) return value
-            }
+            cached?.let { (at, value) -> if (now - at < CACHE_MS) return value }
+            readFileCache()?.let { (at, value) -> if (now - at < CACHE_MS) { cached = at to value; return value } }
         }
-        val result = runCatching {
-            val text = client.get(LATEST_RELEASE_URL) {
-                header("Accept", "application/vnd.github+json")
-                header("User-Agent", "YummyPC/${AppInfo.VERSION}")
-            }.bodyAsText()
-            parse(text)
-        }.getOrNull()
+        val fromAtom = runCatching { fetchAtom() }.getOrNull()
+        val result = fromAtom ?: runCatching { fetchApi() }.getOrNull()
         cached = now to result
+        writeFileCache(now, result)
         return result
     }
 
-    private fun parse(raw: String): UpdateInfo? {
-        val root = json.parseToJsonElement(raw).jsonObject
-        if (root["tag_name"]?.jsonPrimitive?.contentOrNull == null) return null
-        val tag = root["tag_name"]!!.jsonPrimitive.content
-        val name = root["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        val body = root["body"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        val url = root["html_url"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        val published = root["published_at"]?.jsonPrimitive?.contentOrNull
-        val assets = root["assets"]?.jsonArray.orEmpty()
-        val preferred = assets.firstOrNull { asset ->
-            val n = asset.jsonObject["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
-            n.startsWith("YummyPC-") && n.endsWith("-setup.exe")
-        } ?: assets.firstOrNull { asset ->
-            val n = asset.jsonObject["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
-            n.endsWith(".zip")
+    // ---------- Atom-лента ----------
+
+    private suspend fun fetchAtom(): UpdateInfo? {
+        val xml = client.get(RELEASES_ATOM) {
+            header("Accept", "application/atom+xml")
+            header("User-Agent", "YummyPC/${AppInfo.VERSION}")
+        }.bodyAsText()
+        val entries = Regex("<entry>(.*?)</entry>", RegexOption.DOT_MATCHES_ALL)
+            .findAll(xml)
+            .map { it.groupValues[1] }
+            .toList()
+        if (entries.isEmpty()) return null
+        // Лента отсортирована от новых к старым — берём первый стабильный релиз.
+        for (entry in entries) {
+            val version = Regex("/v([0-9][0-9A-Za-z.\\-]*)</id>").find(entry)?.groupValues?.get(1)
+                ?: Regex("/releases/tag/v([0-9][0-9A-Za-z.\\-]*)").find(entry)?.groupValues?.get(1)
+                ?: continue
+            if (version.contains('-')) continue // pre-release
+            val title = Regex("<title>(.*?)</title>", RegexOption.DOT_MATCHES_ALL)
+                .find(entry)?.groupValues?.get(1)?.let(::unescape)?.trim().orEmpty()
+            val notesHtml = Regex("<content type=\"html\">(.*?)</content>", RegexOption.DOT_MATCHES_ALL)
+                .find(entry)?.groupValues?.get(1).orEmpty()
+            val pageUrl = Regex("<link rel=\"alternate\" type=\"text/html\" href=\"([^\"]+)\"")
+                .find(entry)?.groupValues?.get(1)
+                ?: "https://github.com/arbuzproject/YummyPC/releases/tag/v$version"
+            val updated = Regex("<updated>([^<]+)</updated>").find(entry)?.groupValues?.get(1)
+            return UpdateInfo(
+                version = version,
+                name = title.ifBlank { "YummyPC $version" },
+                notes = htmlToText(unescape(notesHtml)),
+                pageUrl = pageUrl,
+                downloadUrl = buildString {
+                    append("https://github.com/arbuzproject/YummyPC/releases/download/v")
+                    append(version)
+                    append("/YummyPC-")
+                    append(version)
+                    append("-portable.zip")
+                },
+                publishedAt = updated,
+            )
         }
-        val download = preferred?.jsonObject?.get("browser_download_url")?.jsonPrimitive?.contentOrNull
+        return null
+    }
+
+    // ---------- REST API (запасной путь) ----------
+
+    private suspend fun fetchApi(): UpdateInfo? {
+        val text = client.get(LATEST_RELEASE_URL) {
+            header("Accept", "application/vnd.github+json")
+            header("User-Agent", "YummyPC/${AppInfo.VERSION}")
+        }.bodyAsText()
+        val root = kotlinx.serialization.json.Json
+            .parseToJsonElement(text)
+            .let { it as? kotlinx.serialization.json.JsonObject }
+            ?: return null
+        fun str(key: String): String? =
+            root[key]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+        val tag = str("tag_name") ?: return null
+        val version = tag.removePrefix("v").removePrefix("V")
+        val assets = (root["assets"] as? kotlinx.serialization.json.JsonArray).orEmpty()
+        val download = assets.mapNotNull { asset ->
+            val obj = asset as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+            val name = (obj["name"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+            val url = (obj["browser_download_url"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+            if (name.startsWith("YummyPC-") && name.endsWith("-setup.exe")) url else null
+        }.firstOrNull()
         return UpdateInfo(
-            version = tag.removePrefix("v").removePrefix("V"),
-            name = name.ifBlank { "YummyPC $tag" },
-            notes = body,
-            pageUrl = url,
+            version = version,
+            name = str("name").orEmpty().ifBlank { "YummyPC $tag" },
+            notes = str("body").orEmpty(),
+            pageUrl = str("html_url").orEmpty(),
             downloadUrl = download,
-            publishedAt = published,
+            publishedAt = str("published_at"),
         )
     }
 
+    // ---------- утилиты ----------
+
+    private fun htmlToText(html: String): String = html
+        .replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), "\n")
+        .replace(Regex("</p>", RegexOption.IGNORE_CASE), "\n")
+        .replace(Regex("</li>", RegexOption.IGNORE_CASE), "\n")
+        .replace(Regex("<[^>]+>"), "")
+        .replace("\r", "")
+        .replace(Regex("\n{3,}"), "\n\n")
+        .trim()
+
+    private fun unescape(value: String): String = value
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+
+    private fun readFileCache(): Pair<Long, UpdateInfo?>? = runCatching {
+        val file = cacheFile
+        if (!file.isFile) return null
+        val first = file.readLines().firstOrNull() ?: return null
+        val at = first.substringBefore('\t').toLongOrNull() ?: return null
+        val payload = first.substringAfter('\t', "")
+        val parts = payload.split('\u001f')
+        if (parts.size < 5) return@runCatching null
+        at to UpdateInfo(
+            version = parts[0],
+            name = parts[1],
+            notes = parts[4],
+            pageUrl = parts[2],
+            downloadUrl = parts[3].ifBlank { null },
+            publishedAt = null,
+        )
+    }.getOrNull()
+
+    private fun writeFileCache(at: Long, info: UpdateInfo?) = runCatching {
+        val file = cacheFile
+        file.parentFile?.mkdirs()
+        val payload = info?.let {
+            listOf(it.version, it.name.replace('\t', ' '), it.pageUrl, it.downloadUrl.orEmpty(), it.notes.replace('\t', ' ').replace('\n', ' '))
+                .joinToString("\u001f")
+        }.orEmpty()
+        file.writeText("$at\t$payload")
+    }
+
+    private val cacheFile get() = java.io.File(System.getProperty("user.home"), ".yummypc/update-cache.txt")
+
     companion object {
         private const val LATEST_RELEASE_URL = "https://api.github.com/repos/arbuzproject/YummyPC/releases/latest"
+        private const val RELEASES_ATOM = "https://github.com/arbuzproject/YummyPC/releases.atom"
         private const val CACHE_MS = 10 * 60_000L
-        private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
         @Volatile
         private var cached: Pair<Long, UpdateInfo?>? = null
