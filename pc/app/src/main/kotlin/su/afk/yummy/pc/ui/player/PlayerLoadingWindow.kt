@@ -38,8 +38,8 @@ internal class PlayerLoadingOverlay(private val anchor: Window?) {
     private var anchorListener: ComponentAdapter? = null
 
     init {
-        window.isAlwaysOnTop = true
-        window.type = Window.Type.POPUP
+        // Окно принадлежит окну приложения и не всплывает поверх чужих приложений.
+        window.isAlwaysOnTop = false
         window.background = Color(0xFF14141A.toInt())
         val panel = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)

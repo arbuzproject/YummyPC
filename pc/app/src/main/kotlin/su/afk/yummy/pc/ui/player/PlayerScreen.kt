@@ -23,9 +23,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -69,7 +78,7 @@ import java.awt.Canvas
 import kotlin.math.max
 import kotlin.math.min
 
-private enum class PlayerPanel { NONE, SOURCES }
+private enum class PlayerPanel { NONE, SOURCES, SETTINGS }
 
 /**
  * Фоновые best-effort отчёты о просмотре. При `onClose` композиция плеера уничтожается,
@@ -96,6 +105,11 @@ private fun reportWatchProgress(
 }
 
 /** Карточка следующей серии в плейлисте (по номеру текущей). */
+private fun PlaybackRequest.previousEpisode(): EpisodeCard? {
+    val index = episodes.indexOfFirst { it.number == episodeNumber }
+    if (index <= 0) return null
+    return episodes.getOrNull(index - 1)
+}
 private fun PlaybackRequest.nextEpisode(): EpisodeCard? {
     val index = episodes.indexOfFirst { it.number == episodeNumber }
     if (index < 0) return null
@@ -145,6 +159,10 @@ fun PlayerScreen(
     }
     var controlsVisible by remember { mutableStateOf(true) }
     var volume by remember { mutableStateOf(YummyConfig.volume) }
+    var lastVolume by remember { mutableStateOf(YummyConfig.volume.takeIf { it > 0 } ?: 100) }
+    var subtitleSize by remember { mutableStateOf(55) }
+    var subtitleColor by remember { mutableStateOf("#FFFFFF") }
+    var subtitleBackground by remember { mutableStateOf("#80000000") }
     // URL, для которого просмотр уже отправлен на сайт: не спамим повторными PUT.
     var reportedForUrl by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -346,74 +364,35 @@ fun PlayerScreen(
         }
     }
 
-    // Прозрачный оверлей поверх видео. mpv рисует в нативном дочернем окне, поэтому пульт —
-    // отдельное прозрачное окно ОС: появляется при наведении вниз, прячется сам.
-    val overlayWindow = remember {
-        val ownerWindow = windowControl.window
-        if (ownerWindow == null) {
-            null
-        } else {
-            PlayerOverlayWindow(
-                owner = ownerWindow,
-                onTogglePause = { player?.togglePause() },
-                onSeek = { seconds -> player?.seekTo(seconds.coerceAtLeast(0.0)) },
-                onSeekBy = { delta ->
-                    val max = if (state.durationSec > 0) state.durationSec else state.positionSec + 10.0
-                    player?.seekTo((state.positionSec + delta).coerceIn(0.0, max))
-                },
-                onVolume = { value ->
-                    volume = value
-                    player?.setVolume(value)
-                    YummyConfig.updatePreferences(volume = value)
-                },
-                onNext = { playNextEpisode() },
-                onFullscreen = { windowControl.toggleFullscreen() },
-                onClose = {
-                    if (state.positionSec > 30.0) {
-                        reportWatchProgress(videoApi, request.videoId, state.positionSec, state.durationSec)
-                    }
-                    onClose()
-                },
-                onSelectDubbing = { name ->
-                    val video = request.episodeVideos.firstOrNull { it.dubbing == name }
-                    if (video != null) switchTo(video)
-                },
-                onSelectPlayer = { name ->
-                    val video = request.episodeVideos.firstOrNull { it.player == name }
-                    if (video != null) switchTo(video)
-                },
-                onSelectQuality = { url, label ->
-                    reportedForUrl = null
-                    val embedded = player
-                    val position = state.positionSec
-                    if (embedded != null && embedded.loadFile(url).isSuccess) {
-                        embedded.seekTo(position)
-                    }
-                    request = request.copy(url = url, qualityLabel = label)
-                },
-                onSpeed = { value -> player?.setSpeed(value) },
-                onSetting = { key, value ->
-                    when (key) {
-                        "yummypc-adaptive", "yummypc-volume-stabilization" -> Unit
-                        else -> player?.setProperty(key, value)
-                    }
-                },
+    fun playPreviousEpisode() {
+        val previous = request.previousEpisode() ?: return
+        val video = request.videoForEpisode(previous) ?: return
+        switchStatus = "Открываю серию ${previous.number}…"
+        reportedForUrl = null
+        scope.launch {
+            PlayerActions.resolve(video, request.pageTitle, request.animeId, previous.videos, request.episodes).fold(
+                onSuccess = { request = it; switchStatus = null },
+                onFailure = { switchStatus = "Не удалось: ${it.message ?: it::class.simpleName}" },
             )
         }
     }
-    SideEffect { overlayWindow?.setPlayback(state) }
-    SideEffect { overlayWindow?.setVolume(volume) }
-    SideEffect { overlayWindow?.setTitle(request.pageTitle.ifBlank { request.title }, request.episodeNumber) }
-    SideEffect {
-        overlayWindow?.setSources(
-            dubbings = request.episodeVideos.map { it.dubbing }.filter { it.isNotBlank() }.distinct(),
-            players = request.episodeVideos.map { it.player }.filter { it.isNotBlank() }.distinct(),
-            dubbing = request.dubbingName,
-            player = request.playerName,
-        )
+
+    fun cycleQuality() {
+        val list = request.qualities
+        if (list.size < 2) return
+        val currentIndex = list.indexOfFirst { it.second == request.url }.takeIf { it >= 0 } ?: 0
+        val next = list[(currentIndex + 1) % list.size]
+        reportedForUrl = null
+        val embedded = player
+        val position = state.positionSec
+        if (embedded != null && embedded.loadFile(next.second).isSuccess) {
+            embedded.seekTo(position)
+        }
+        request = request.copy(url = next.second, qualityLabel = next.first)
+        switchStatus = "Качество: ${next.first}"
     }
-    SideEffect { overlayWindow?.setQualities(request.qualities, request.qualityLabel) }
-    SideEffect { overlayWindow?.setSuppressed(panel != PlayerPanel.NONE || error != null) }
+
+    // Всё управление — внутри окна приложения (Compose), без отдельных окон поверх экрана.
     Column(Modifier.fillMaxSize().background(Color.Black)) {
         Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black)) {
             SwingPanel(modifier = Modifier.fillMaxSize(), background = Color.Black, factory = { canvas })
@@ -423,15 +402,8 @@ fun PlayerScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        CircularProgressIndicator(
-                            color = YummyPalette.Accent,
-                            modifier = Modifier.size(38.dp),
-                        )
-                        Text(
-                            "Загрузка потока…",
-                            color = YummyPalette.Text,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        CircularProgressIndicator(color = YummyPalette.Accent, modifier = Modifier.size(38.dp))
+                        Text("Загрузка потока…", color = YummyPalette.Text, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -469,7 +441,85 @@ fun PlayerScreen(
                 onClose = { panel = PlayerPanel.NONE },
             )
 
-            PlayerPanel.NONE -> Unit
+            PlayerPanel.SETTINGS -> PlayerSettingsPanel(
+                speed = speed,
+                volume = volume,
+                subtitleSize = subtitleSize,
+                subtitleColor = subtitleColor,
+                subtitleBackground = subtitleBackground,
+                onSpeed = { newSpeed ->
+                    speed = newSpeed
+                    player?.setSpeed(newSpeed)
+                },
+                onSubtitleSize = { size ->
+                    subtitleSize = size
+                    player?.setProperty("sub-font-size", size)
+                },
+                onSubtitleColor = { color ->
+                    subtitleColor = color
+                    player?.setProperty("sub-color", color)
+                },
+                onSubtitleBackground = { color ->
+                    subtitleBackground = color
+                    player?.setProperty("sub-back-color", color)
+                },
+                onClose = { panel = PlayerPanel.NONE },
+            )
+
+            PlayerPanel.NONE -> InAppControlBar(
+                active = request,
+                state = state,
+                speed = speed,
+                volume = volume,
+                subtitleSize = subtitleSize,
+                switchStatus = switchStatus,
+                isFullscreen = windowControl.isFullscreen,
+                onTogglePause = { player?.togglePause() },
+                onSeek = { player?.seekTo(it.toDouble()) },
+                onPrevious = { playPreviousEpisode() },
+                onNext = { playNextEpisode() },
+                onSeekBy = { delta ->
+                    val max = if (state.durationSec > 0) state.durationSec else state.positionSec + 10.0
+                    player?.seekTo((state.positionSec + delta).coerceIn(0.0, max))
+                },
+                onSpeed = {
+                    speed = when (speed) {
+                        0.75f -> 1.0f
+                        1.0f -> 1.25f
+                        1.25f -> 1.5f
+                        1.5f -> 2.0f
+                        else -> 0.75f
+                    }
+                    player?.setSpeed(speed)
+                },
+                onVolume = { value ->
+                    val clamped = value.coerceIn(0, 130)
+                    if (clamped > 0) lastVolume = clamped
+                    volume = clamped
+                    player?.setVolume(clamped)
+                    YummyConfig.updatePreferences(volume = clamped)
+                },
+                onMute = {
+                    if (volume > 0) {
+                        lastVolume = volume
+                        volume = 0
+                    } else {
+                        volume = lastVolume.coerceAtLeast(1)
+                    }
+                    player?.setVolume(volume)
+                    YummyConfig.updatePreferences(volume = volume)
+                },
+                onQuality = { cycleQuality() },
+                onSources = { panel = PlayerPanel.SOURCES },
+                onSettings = { panel = PlayerPanel.SETTINGS },
+                onFullscreen = { windowControl.toggleFullscreen() },
+                onClose = {
+                    if (state.positionSec > 30.0) {
+                        reportWatchProgress(videoApi, request.videoId, state.positionSec, state.durationSec)
+                    }
+                    onClose()
+                },
+            )
         }
     }
 
@@ -709,4 +759,188 @@ private fun PanelButton(label: String, onClick: () -> Unit) {
 private fun formatTime(seconds: Double): String {
     val total = seconds.toInt().coerceAtLeast(0)
     return "%d:%02d".format(total / 60, total % 60)
+}
+/** Панель управления плеером внутри окна приложения (без отдельных окон поверх экрана). */
+@Composable
+private fun InAppControlBar(
+    active: PlaybackRequest,
+    state: MpvPlaybackState,
+    speed: Float,
+    volume: Int,
+    subtitleSize: Int,
+    switchStatus: String?,
+    isFullscreen: Boolean,
+    onTogglePause: () -> Unit,
+    onSeek: (Float) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onSeekBy: (Double) -> Unit,
+    onSpeed: () -> Unit,
+    onVolume: (Int) -> Unit,
+    onMute: () -> Unit,
+    onQuality: () -> Unit,
+    onSources: () -> Unit,
+    onSettings: () -> Unit,
+    onFullscreen: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val duration = max(1.0, state.durationSec)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(YummyPalette.BackgroundElevated)
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    active.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = YummyPalette.Text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    active.subtitle.orEmpty(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = YummyPalette.TextDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            switchStatus?.let {
+                Text(it, color = YummyPalette.Accent, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(formatTime(state.positionSec), color = YummyPalette.TextDim, style = MaterialTheme.typography.labelSmall)
+            Slider(
+                value = (state.positionSec / duration).toFloat().coerceIn(0f, 1f),
+                onValueChange = { onSeek((it * duration).toFloat()) },
+                modifier = Modifier.weight(1f),
+            )
+            Text(formatTime(state.durationSec), color = YummyPalette.TextDim, style = MaterialTheme.typography.labelSmall)
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            IconButton(onClick = onPrevious) {
+                Icon(Icons.Filled.SkipPrevious, contentDescription = "Предыдущая серия", tint = YummyPalette.Text)
+            }
+            IconButton(onClick = { onSeekBy(-10.0) }) {
+                Text("−10", color = YummyPalette.Text, style = MaterialTheme.typography.labelMedium)
+            }
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(YummyPalette.Accent)
+                    .clickable(onClick = onTogglePause),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (state.paused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                    contentDescription = "Пауза",
+                    tint = Color(0xFF16110B),
+                )
+            }
+            IconButton(onClick = { onSeekBy(10.0) }) {
+                Text("+10", color = YummyPalette.Text, style = MaterialTheme.typography.labelMedium)
+            }
+            IconButton(onClick = onNext) {
+                Icon(Icons.Filled.SkipNext, contentDescription = "Следующая серия", tint = YummyPalette.Text)
+            }
+            Spacer(Modifier.width(6.dp))
+            PanelButton("Озвучка и балансер") { onSources() }
+            PanelButton("Качество: ${active.qualityLabel.ifBlank { "auto" }}") { onQuality() }
+            PanelButton("x$speed") { onSpeed() }
+            PanelButton("Субтитры: $subtitleSize") { onSettings() }
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = onMute) {
+                Icon(
+                    if (volume == 0) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
+                    contentDescription = "Звук",
+                    tint = YummyPalette.Text,
+                )
+            }
+            Slider(
+                value = volume.coerceIn(0, 130).toFloat(),
+                onValueChange = { onVolume(it.toInt()) },
+                valueRange = 0f..130f,
+                modifier = Modifier.width(120.dp),
+            )
+            Text("$volume%", color = YummyPalette.TextDim, style = MaterialTheme.typography.labelSmall, modifier = Modifier.width(40.dp))
+            IconButton(onClick = onSettings) {
+                Icon(Icons.Outlined.Settings, contentDescription = "Настройки плеера", tint = YummyPalette.Text)
+            }
+            IconButton(onClick = onFullscreen) {
+                Icon(
+                    if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                    contentDescription = "Полный экран",
+                    tint = YummyPalette.Text,
+                )
+            }
+            IconButton(onClick = onClose) {
+                Icon(Icons.Filled.Close, contentDescription = "Закрыть плеер", tint = Color(0xFFFF8A65))
+            }
+        }
+    }
+}
+
+/** Настройки плеера внутри приложения: скорость и субтитры. */
+@Composable
+private fun PlayerSettingsPanel(
+    speed: Float,
+    volume: Int,
+    subtitleSize: Int,
+    subtitleColor: String,
+    subtitleBackground: String,
+    onSpeed: (Float) -> Unit,
+    onSubtitleSize: (Int) -> Unit,
+    onSubtitleColor: (String) -> Unit,
+    onSubtitleBackground: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .height(240.dp)
+            .background(YummyPalette.BackgroundElevated)
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Настройки плеера", style = MaterialTheme.typography.titleMedium, color = YummyPalette.Text)
+            PanelButton("Назад к управлению") { onClose() }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Скорость", color = YummyPalette.TextDim, modifier = Modifier.width(150.dp))
+            listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f).forEach { value ->
+                PanelButton(if (value == speed) "✓ ${value}x" else "${value}x") { onSpeed(value) }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Размер субтитров", color = YummyPalette.TextDim, modifier = Modifier.width(150.dp))
+            listOf(40, 55, 70, 90).forEach { value ->
+                PanelButton(if (value == subtitleSize) "✓ $value" else "$value") { onSubtitleSize(value) }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Цвет субтитров", color = YummyPalette.TextDim, modifier = Modifier.width(150.dp))
+            listOf("#FFFFFF", "#FFD54F", "#69F0AE").forEach { value ->
+                PanelButton(if (value == subtitleColor) "✓ $value" else value) { onSubtitleColor(value) }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Фон субтитров", color = YummyPalette.TextDim, modifier = Modifier.width(150.dp))
+            listOf("#00000000", "#80000000", "#FF000000").forEach { value ->
+                val label = when (value) { "#00000000" -> "Прозрачный"; "#80000000" -> "Полупрозрачный"; else -> "Чёрный" }
+                PanelButton(if (value == subtitleBackground) "✓ $label" else label) { onSubtitleBackground(value) }
+            }
+        }
+        Text("Громкость: $volume% · горячие клавиши: пробел, ←/→ ±10 с, ↑/↓ ±5% громкости", color = YummyPalette.TextDim, style = MaterialTheme.typography.labelSmall)
+    }
 }
