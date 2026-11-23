@@ -150,13 +150,15 @@ fun TvPlayerOverlay(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             skipOpening?.let {
-                TvButton("Пропустить опенинг", accentOutline = true) { onSkip(it.endSec.toDouble()) }
+                val label = if (openingCountdown != null && openingCountdown > 0) "Пропустить ($openingCountdown с)" else "Пропустить"
+                TvButton(label, accentOutline = true, compact = true) { onSkip(it.endSec.toDouble()) }
             }
             skipEnding?.let {
-                TvButton("Пропустить эндинг", accentOutline = true) { onSkip(it.endSec.toDouble()) }
+                val label = if (endingCountdown != null && endingCountdown > 0) "Пропустить ($endingCountdown с)" else "Пропустить"
+                TvButton(label, accentOutline = true, compact = true) { onSkip(it.endSec.toDouble()) }
             }
             if (onCancelAutoSkip != null) {
-                TvButton("Отменить пропуск", accentOutline = false) { onCancelAutoSkip() }
+                TvButton("Отменить", accentOutline = false, compact = true) { onCancelAutoSkip() }
             }
         }
 
@@ -324,6 +326,7 @@ private fun TvButton(
     text: String,
     selected: Boolean = false,
     accentOutline: Boolean = false,
+    compact: Boolean = false,
     onClick: () -> Unit,
 ) {
     val borderColor = if (selected || accentOutline) Accent else Color.White.copy(alpha = 0.28f)
@@ -331,12 +334,12 @@ private fun TvButton(
     val fg = if (selected) Color(0xFF16110B) else if (accentOutline) Accent else Color.White
     Box(
         Modifier
-            .height(50.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .height(if (compact) 38.dp else 50.dp)
+            .clip(RoundedCornerShape(if (compact) 10.dp else 12.dp))
             .background(bg)
-            .border(1.5.dp, borderColor, RoundedCornerShape(12.dp))
+            .border(1.2.dp, borderColor, RoundedCornerShape(if (compact) 10.dp else 12.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = if (compact) 13.dp else 20.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(text, color = fg, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)

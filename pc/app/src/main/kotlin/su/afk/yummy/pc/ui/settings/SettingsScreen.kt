@@ -150,8 +150,13 @@ fun SettingsScreen() {
                     YummyConfig.updatePreferences(autoSkipEnding = it)
                 },
             )
-        SettingRow("Задержка автопропуска опенинга") {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        }
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text("Задержка автопропуска опенинга", style = MaterialTheme.typography.titleSmall, color = YummyPalette.Text)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Slider(
                     value = openingDelay.toFloat(),
                     onValueChange = {
@@ -161,13 +166,12 @@ fun SettingsScreen() {
                     },
                     valueRange = 1f..10f,
                     steps = 8,
-                    modifier = Modifier.width(220.dp),
+                    modifier = Modifier.weight(1f),
                 )
                 Text("$openingDelay с", color = YummyPalette.TextDim)
             }
-        }
-        SettingRow("Задержка автопропуска эндинга") {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Задержка автопропуска эндинга", style = MaterialTheme.typography.titleSmall, color = YummyPalette.Text)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Slider(
                     value = endingDelay.toFloat(),
                     onValueChange = {
@@ -177,11 +181,10 @@ fun SettingsScreen() {
                     },
                     valueRange = 1f..10f,
                     steps = 8,
-                    modifier = Modifier.width(220.dp),
+                    modifier = Modifier.weight(1f),
                 )
                 Text("$endingDelay с", color = YummyPalette.TextDim)
             }
-        }
         }
         Text(
             "Панель управления в плеере скрывается через 3 секунды бездействия. Полный экран — F11, выход — Esc.",
