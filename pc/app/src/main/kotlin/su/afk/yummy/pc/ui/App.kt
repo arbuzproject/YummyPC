@@ -299,6 +299,21 @@ fun App(
                 }
             }
         }
+        if (quickLabel != null) {
+            Box(
+                Modifier.fillMaxSize().background(Color(0xCC000000)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    CircularProgressIndicator(color = YummyPalette.Accent, modifier = Modifier.size(40.dp))
+                    Text(quickLabel ?: "", color = YummyPalette.Text, style = MaterialTheme.typography.titleMedium)
+                    Text("Готовим видеопоток…", color = YummyPalette.TextDim, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
     }
 }
 

@@ -29,7 +29,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "YummyPC"
-            packageVersion = "1.0.7"
+            packageVersion = "1.5.0"
             description = "YummyPC — unofficial YummyAnime desktop client"
             vendor = "YummyPC community port"
             windows {
