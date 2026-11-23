@@ -1,6 +1,7 @@
 ﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.ui.player
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +53,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.input.pointer.pointerMoveFilter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,7 +74,7 @@ import su.afk.yummy.pc.api.ExternalSourcesApi
 import su.afk.yummy.pc.api.VideoRef
 import su.afk.yummy.pc.api.YaniVideoApi
 import su.afk.yummy.pc.api.YummyConfig
-import su.afk.yummy.pc.player.EmbeddedMpv
+import su.afk.yummy.pc.player.LibmpvRenderPlayer
 import su.afk.yummy.pc.player.MpvPlaybackState
 import su.afk.yummy.pc.player.PlaybackRequest
 import su.afk.yummy.pc.player.PlayerActions
@@ -128,6 +135,7 @@ private fun PlaybackRequest.nextEpisodeVideo(): VideoRef? =
  * Встроенный плеер: mpv рисует видео в дочернем окне AWT-канвы.
  * Панель управления прячется при бездействии и возвращается при движении мыши.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun PlayerScreen(
     active: PlaybackRequest,
@@ -157,7 +165,6 @@ fun PlayerScreen(
     var externalStatus by remember(request.animeId, request.episodeNumber) {
         mutableStateOf<String?>(null)
     }
-    var controlsVisible by remember { mutableStateOf(true) }
     var volume by remember { mutableStateOf(YummyConfig.volume) }
     var lastVolume by remember { mutableStateOf(YummyConfig.volume.takeIf { it > 0 } ?: 100) }
     var subtitleSize by remember { mutableStateOf(55) }
@@ -168,44 +175,26 @@ fun PlayerScreen(
     val scope = rememberCoroutineScope()
     val videoApi = remember { YaniVideoApi() }
 
-    val canvas = remember { Canvas() }
-    var player by remember { mutableStateOf<EmbeddedMpv?>(null) }
-    // Плашка загрузки — отдельное окно ОС: mpv перекрывает Compose-слой.
-    val loadingOverlay = remember { PlayerLoadingOverlay(windowControl.window) }
-    LaunchedEffect(state.loaded, error, request.url) {
-        if (!state.loaded && error == null) {
-            loadingOverlay.show(if (request.qualityLabel.isNotBlank()) "Загрузка потока (${request.qualityLabel})…" else "Загрузка видеопотока…")
-        } else {
-            loadingOverlay.hide()
-        }
-    }
+    var player by remember { mutableStateOf<LibmpvRenderPlayer?>(null) }
+    var frame by remember { mutableStateOf<ImageBitmap?>(null) }
+    var videoSize by remember { mutableStateOf(IntSize(1280, 720)) }
 
     LaunchedEffect(request.url) {
         player?.dispose()
-        // Сбрасываем состояние прошлого потока: оверлей загрузки появляется сразу,
-        // а отчёт о просмотре не срабатывает по старой позиции на новом URL.
+        player = null
+        frame = null
+        // Сбрасываем состояние прошлого потока: отчёт о просмотре не срабатывает
+        // по старой позиции на новом URL.
         state = MpvPlaybackState()
         error = null
-        var hwnd = 0L
-        repeat(40) {
-            if (hwnd == 0L && canvas.isDisplayable) {
-                hwnd = runCatching { com.sun.jna.Native.getComponentID(canvas) }.getOrDefault(0L)
-            }
-            if (hwnd == 0L) delay(100)
-        }
-        if (hwnd == 0L) {
-            error = "не удалось получить окно видео (HWND)"
-            return@LaunchedEffect
-        }
-        val embedded = EmbeddedMpv(
-            hwnd = hwnd,
-            headers = request.headers,
-            referer = request.referer,
-            title = request.title,
-        )
-        player = embedded
-        embedded.start(request.url).onFailure { error = it.message ?: it.toString() }
-        embedded.setVolume(volume)
+        runCatching {
+            val instance = LibmpvRenderPlayer()
+            instance.setVideoSize(videoSize.width, videoSize.height)
+            player = instance
+            instance.start(request.url, request.headers, request.referer)
+                .onFailure { error = it.message ?: it.toString() }
+            instance.setVolume(volume)
+        }.onFailure { error = it.message ?: it.toString() }
         // Запоминаем выбранную озвучку/балансер для быстрого запуска с главной.
         runCatching { rememberChoice(request) }
 
@@ -214,6 +203,9 @@ fun PlayerScreen(
         request.nextEpisodeVideo()?.let { next ->
             scope.launch { PlayerActions.prefetch(next) }
         }
+    }
+    LaunchedEffect(player) {
+        player?.videoFrames?.collect { frame = it }
     }
     LaunchedEffect(player) { player?.state?.collect { state = it } }
     DisposableEffect(Unit) {
@@ -385,17 +377,48 @@ fun PlayerScreen(
         reportedForUrl = null
         val embedded = player
         val position = state.positionSec
-        if (embedded != null && embedded.loadFile(next.second).isSuccess) {
+        if (embedded != null && embedded.loadFile(next.second)) {
             embedded.seekTo(position)
         }
         request = request.copy(url = next.second, qualityLabel = next.first)
         switchStatus = "Качество: ${next.first}"
     }
 
-    // Всё управление — внутри окна приложения (Compose), без отдельных окон поверх экрана.
-    Column(Modifier.fillMaxSize().background(Color.Black)) {
-        Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black)) {
-            SwingPanel(modifier = Modifier.fillMaxSize(), background = Color.Black, factory = { canvas })
+    // Видео из libmpv render + телевизионный оверлей внутри окна (как в тестовой Chromium-версии).
+    var tvPanel by remember { mutableStateOf(TvPanel.NONE) }
+    var controlsVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(controlsVisible, state.paused, tvPanel) {
+        if (controlsVisible && !state.paused && tvPanel == TvPanel.NONE) {
+            kotlinx.coroutines.delay(2600)
+            controlsVisible = false
+        }
+    }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerMoveFilter(onMove = {
+                controlsVisible = true
+                false
+            }),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .onSizeChanged {
+                    videoSize = it
+                    player?.setVideoSize(it.width, it.height)
+                },
+        ) {
+            frame?.let { bitmap ->
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                )
+            }
             if (!state.loaded && error == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(
@@ -422,7 +445,7 @@ fun PlayerScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             PanelButton("Повторить") {
                                 error = null
-                                player?.start(request.url)?.onFailure { error = it.message ?: it.toString() }
+                                player?.start(request.url, request.headers, request.referer)?.onFailure { error = it.message ?: it.toString() }
                             }
                             PanelButton("Закрыть") { onClose() }
                         }
@@ -431,96 +454,102 @@ fun PlayerScreen(
             }
         }
 
-        when (panel) {
-            PlayerPanel.SOURCES -> SourcePanel(
-                request = request,
-                externalSources = externalSources.orEmpty(),
-                externalStatus = externalStatus,
-                onSelect = ::switchTo,
-                onSelectExternal = ::switchToExternal,
-                onClose = { panel = PlayerPanel.NONE },
-            )
-
-            PlayerPanel.SETTINGS -> PlayerSettingsPanel(
-                speed = speed,
-                volume = volume,
-                subtitleSize = subtitleSize,
-                subtitleColor = subtitleColor,
-                subtitleBackground = subtitleBackground,
-                onSpeed = { newSpeed ->
-                    speed = newSpeed
-                    player?.setSpeed(newSpeed)
-                },
-                onSubtitleSize = { size ->
-                    subtitleSize = size
-                    player?.setProperty("sub-font-size", size)
-                },
-                onSubtitleColor = { color ->
-                    subtitleColor = color
-                    player?.setProperty("sub-color", color)
-                },
-                onSubtitleBackground = { color ->
-                    subtitleBackground = color
-                    player?.setProperty("sub-back-color", color)
-                },
-                onClose = { panel = PlayerPanel.NONE },
-            )
-
-            PlayerPanel.NONE -> InAppControlBar(
-                active = request,
-                state = state,
-                speed = speed,
-                volume = volume,
-                subtitleSize = subtitleSize,
-                switchStatus = switchStatus,
-                isFullscreen = windowControl.isFullscreen,
-                onTogglePause = { player?.togglePause() },
-                onSeek = { player?.seekTo(it.toDouble()) },
-                onPrevious = { playPreviousEpisode() },
-                onNext = { playNextEpisode() },
-                onSeekBy = { delta ->
-                    val max = if (state.durationSec > 0) state.durationSec else state.positionSec + 10.0
-                    player?.seekTo((state.positionSec + delta).coerceIn(0.0, max))
-                },
-                onSpeed = {
-                    speed = when (speed) {
-                        0.75f -> 1.0f
-                        1.0f -> 1.25f
-                        1.25f -> 1.5f
-                        1.5f -> 2.0f
-                        else -> 0.75f
-                    }
-                    player?.setSpeed(speed)
-                },
-                onVolume = { value ->
-                    val clamped = value.coerceIn(0, 130)
-                    if (clamped > 0) lastVolume = clamped
-                    volume = clamped
-                    player?.setVolume(clamped)
-                    YummyConfig.updatePreferences(volume = clamped)
-                },
-                onMute = {
-                    if (volume > 0) {
-                        lastVolume = volume
-                        volume = 0
-                    } else {
-                        volume = lastVolume.coerceAtLeast(1)
-                    }
-                    player?.setVolume(volume)
-                    YummyConfig.updatePreferences(volume = volume)
-                },
-                onQuality = { cycleQuality() },
-                onSources = { panel = PlayerPanel.SOURCES },
-                onSettings = { panel = PlayerPanel.SETTINGS },
-                onFullscreen = { windowControl.toggleFullscreen() },
-                onClose = {
-                    if (state.positionSec > 30.0) {
-                        reportWatchProgress(videoApi, request.videoId, state.positionSec, state.durationSec)
-                    }
-                    onClose()
-                },
-            )
-        }
+        TvPlayerOverlay(
+            title = request.pageTitle.ifBlank { request.title },
+            episode = request.episodeNumber,
+            dubbing = request.dubbingName,
+            playerName = request.playerName,
+            qualityLabel = request.qualityLabel,
+            state = state,
+            volume = volume,
+            speed = speed,
+            subtitleSize = subtitleSize,
+            subtitleColor = subtitleColor,
+            subtitleBackground = subtitleBackground,
+            controlsVisible = controlsVisible || state.paused || tvPanel != TvPanel.NONE,
+            panel = tvPanel,
+            dubbings = request.episodeVideos
+                .groupBy { it.dubbing.ifBlank { "Без озвучки" } }
+                .map { (name, videos) -> name to videos.map { it.player }.filter { it.isNotBlank() }.distinct() },
+            qualities = request.qualities,
+            openingSkip = request.openingSkip,
+            endingSkip = request.endingSkip,
+            isFullscreen = windowControl.isFullscreen,
+            onTogglePause = {
+                player?.togglePause()
+                controlsVisible = true
+            },
+            onSeek = {
+                player?.seekTo(it.toDouble())
+                controlsVisible = true
+            },
+            onPrev = { playPreviousEpisode() },
+            onNext = { playNextEpisode() },
+            onSkip = { seconds ->
+                player?.seekTo(seconds)
+                controlsVisible = true
+            },
+            onTogglePanel = { target ->
+                tvPanel = if (tvPanel == target) TvPanel.NONE else target
+                controlsVisible = true
+            },
+            onSelectDubbing = { name ->
+                request.episodeVideos.firstOrNull { it.dubbing == name }?.let { switchTo(it) }
+                tvPanel = TvPanel.NONE
+            },
+            onSelectPlayer = { name ->
+                (request.episodeVideos.firstOrNull { it.player == name && it.dubbing == request.dubbingName }
+                    ?: request.episodeVideos.firstOrNull { it.player == name })?.let { switchTo(it) }
+                tvPanel = TvPanel.NONE
+            },
+            onSelectQuality = { label ->
+                request.qualities.firstOrNull { it.first == label }?.let { (qualityName, qualityUrl) ->
+                    player?.loadFile(qualityUrl)
+                    request = request.copy(url = qualityUrl, qualityLabel = qualityName)
+                }
+                tvPanel = TvPanel.NONE
+            },
+            onSpeed = { newSpeed ->
+                speed = newSpeed
+                player?.setSpeed(newSpeed)
+            },
+            onVolume = { value ->
+                val clamped = value.coerceIn(0, 130)
+                if (clamped > 0) lastVolume = clamped
+                volume = clamped
+                player?.setVolume(clamped)
+                YummyConfig.updatePreferences(volume = clamped)
+            },
+            onMute = {
+                if (volume > 0) {
+                    lastVolume = volume
+                    volume = 0
+                } else {
+                    volume = lastVolume.coerceAtLeast(1)
+                }
+                player?.setVolume(volume)
+                YummyConfig.updatePreferences(volume = volume)
+            },
+            onSubtitleSize = { size ->
+                subtitleSize = size
+                player?.setProperty("sub-font-size", size)
+            },
+            onSubtitleColor = { color ->
+                subtitleColor = color
+                player?.setProperty("sub-color", color)
+            },
+            onSubtitleBackground = { color ->
+                subtitleBackground = color
+                player?.setProperty("sub-back-color", color)
+            },
+            onFullscreen = { windowControl.toggleFullscreen() },
+            onClose = {
+                if (state.positionSec > 30.0) {
+                    reportWatchProgress(videoApi, request.videoId, state.positionSec, state.durationSec)
+                }
+                onClose()
+            },
+        )
     }
 
 }
