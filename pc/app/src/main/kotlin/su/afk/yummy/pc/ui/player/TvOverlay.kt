@@ -111,12 +111,16 @@ fun TvPlayerOverlay(
     onSubtitleBackground: (String) -> Unit,
     onFullscreen: () -> Unit,
     onClose: () -> Unit,
+    onDoubleTap: () -> Unit = {},
 ) {
     val duration = if (state.durationSec > 0) state.durationSec else 1.0
     val skipOpening = openingSkip?.takeIf { state.positionSec >= it.startSec.toDouble() && state.positionSec < it.endSec.toDouble() }
     val skipEnding = endingSkip?.takeIf { state.positionSec >= it.startSec.toDouble() && state.positionSec < it.endSec.toDouble() }
-
-    Box(Modifier.fillMaxSize()) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) { detectTapGestures(onDoubleTap = { onDoubleTap() }) },
+    ) {
         // Верхние плашки.
         if (controlsVisible) {
             Column(Modifier.align(Alignment.TopStart).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

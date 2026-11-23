@@ -581,6 +581,7 @@ fun PlayerScreen(
                 player?.setProperty("sub-back-color", color)
             },
             onFullscreen = { windowControl.toggleFullscreen() },
+            onDoubleTap = { windowControl.toggleFullscreen() },
             onClose = {
                 if (state.positionSec > 30.0) {
                     reportWatchProgress(videoApi, request.videoId, state.positionSec, state.durationSec)
