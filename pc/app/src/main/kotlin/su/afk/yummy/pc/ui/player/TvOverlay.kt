@@ -1,4 +1,4 @@
-// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
+﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.ui.player
 
 import androidx.compose.foundation.background
@@ -95,12 +95,8 @@ fun TvPlayerOverlay(
     onNext: () -> Unit,
     onSkip: (Double) -> Unit,
     onCancelAutoSkip: (() -> Unit)? = null,
-    autoSkipOpening: Boolean = true,
-    autoSkipEnding: Boolean = false,
-    skipDelaySec: Int = 0,
-    onToggleAutoSkipOpening: () -> Unit = {},
-    onToggleAutoSkipEnding: () -> Unit = {},
-    onSkipDelay: (Int) -> Unit = {},
+    openingCountdown: Int? = null,
+    endingCountdown: Int? = null,
     onTogglePanel: (TvPanel) -> Unit,
     onSelectDubbing: (String) -> Unit,
     onSelectPlayer: (String) -> Unit,
@@ -299,16 +295,6 @@ fun TvPlayerOverlay(
                     onSubtitleBackground(if (subtitleBackground == "#00000000") "#80000000" else "#00000000")
                 }
                 SettingsRow("Стабилизация громкости", "Выкл") { /* визуальная настройка, как в референсе */ }
-                SettingsRow("Автопропуск опенинга", if (autoSkipOpening) "Вкл" else "Выкл") { onToggleAutoSkipOpening() }
-                SettingsRow("Автопропуск эндинга", if (autoSkipEnding) "Вкл" else "Выкл") { onToggleAutoSkipEnding() }
-                Text("Задержка автопропуска: $skipDelaySec с", color = Dim, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
-                Slider(
-                    value = skipDelaySec.coerceIn(1, 10).toFloat(),
-                    onValueChange = { onSkipDelay(it.toInt().coerceIn(1, 10)) },
-                    valueRange = 1f..10f,
-                    steps = 8,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                )
             }
 
             TvPanel.NONE -> Unit

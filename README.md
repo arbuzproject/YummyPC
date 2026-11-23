@@ -2,7 +2,7 @@
 
 Клиент YummyAnime для Windows на Kotlin + Compose Desktop со встроенным плеером на базе mpv.
 
-[![Скачать](https://img.shields.io/badge/⬇_Скачать-1.5.0-F08A4B?style=for-the-badge)](https://github.com/arbuzproject/YummyPC/releases/latest)
+[![Скачать](https://img.shields.io/badge/⬇_Скачать-1.5.1-F08A4B?style=for-the-badge)](https://github.com/arbuzproject/YummyPC/releases/latest)
 [![Release](https://img.shields.io/github/v/release/arbuzproject/YummyPC?label=version&color=F08A4B)](https://github.com/arbuzproject/YummyPC/releases)
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/license-CC%20BY--NC%204.0-lightgrey)](LICENSE)
 
@@ -13,8 +13,8 @@
 
 Готовые сборки — в разделе **[Releases](https://github.com/arbuzproject/YummyPC/releases/latest)**:
 
-- **Portable** (`YummyPC-1.5.0-portable.zip`) — распаковать и запустить `YummyPC.exe`, ничего устанавливать не нужно.
-- **Установщик** (`YummyPC-1.5.0-setup.exe`) — обычная установка в систему.
+- **Portable** (`YummyPC-1.5.1-portable.zip`) — распаковать и запустить `YummyPC.exe`, ничего устанавливать не нужно.
+- **Установщик** (`YummyPC-1.5.1-setup.exe`) — обычная установка в систему.
 
 Требования: Windows 10/11 x64. Плеер mpv входит в portable-сборку.
 

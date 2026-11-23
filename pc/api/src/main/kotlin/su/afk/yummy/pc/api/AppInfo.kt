@@ -3,5 +3,5 @@ package su.afk.yummy.pc.api
 
 /** Версия клиента. Меняется при выпуске релиза вместе с тегом GitHub. */
 object AppInfo {
-    const val VERSION: String = "1.5.0"
+    const val VERSION: String = "1.5.1"
 }

@@ -1,4 +1,4 @@
-// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
+﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.api
 
 import kotlinx.serialization.SerialName
@@ -68,6 +68,15 @@ object YummyConfig {
     var skipDelaySec: Int = 0
         private set
 
+    /** Независимые задержки автопропуска (1..10 секунд). */
+    @Volatile
+    var openingSkipDelaySec: Int = 5
+        private set
+
+    @Volatile
+    var endingSkipDelaySec: Int = 5
+        private set
+
     /** Тема оформления: system / dark / light. */
     @Volatile
     var themeMode: String = "system"
@@ -104,6 +113,8 @@ object YummyConfig {
         autoSkipOpening = stored.autoSkipOpening
         autoSkipEnding = stored.autoSkipEnding
         skipDelaySec = stored.skipDelaySec.coerceIn(0, 30)
+        openingSkipDelaySec = stored.openingSkipDelaySec.coerceIn(1, 10)
+        endingSkipDelaySec = stored.endingSkipDelaySec.coerceIn(1, 10)
         themeMode = stored.themeMode.ifBlank { "system" }
         volume = stored.volume.coerceIn(0, 130)
     }
@@ -120,6 +131,8 @@ object YummyConfig {
             autoSkipOpening = autoSkipOpening,
             autoSkipEnding = autoSkipEnding,
             skipDelaySec = skipDelaySec,
+            openingSkipDelaySec = openingSkipDelaySec,
+            endingSkipDelaySec = endingSkipDelaySec,
             themeMode = themeMode,
             volume = volume,
         )
@@ -152,6 +165,8 @@ object YummyConfig {
         autoSkipOpening: Boolean? = null,
         autoSkipEnding: Boolean? = null,
         skipDelaySec: Int? = null,
+        openingSkipDelaySec: Int? = null,
+        endingSkipDelaySec: Int? = null,
         themeMode: String? = null,
         volume: Int? = null,
     ) {
@@ -162,6 +177,8 @@ object YummyConfig {
         if (autoSkipOpening != null) this.autoSkipOpening = autoSkipOpening
         if (autoSkipEnding != null) this.autoSkipEnding = autoSkipEnding
         if (skipDelaySec != null) this.skipDelaySec = skipDelaySec.coerceIn(0, 30)
+        if (openingSkipDelaySec != null) this.openingSkipDelaySec = openingSkipDelaySec.coerceIn(1, 10)
+        if (endingSkipDelaySec != null) this.endingSkipDelaySec = endingSkipDelaySec.coerceIn(1, 10)
         if (themeMode != null) this.themeMode = themeMode
         if (volume != null) this.volume = volume.coerceIn(0, 130)
         save()
@@ -186,6 +203,8 @@ object YummyConfig {
         val autoSkipOpening: Boolean = true,
         val autoSkipEnding: Boolean = false,
         val skipDelaySec: Int = 0,
+        val openingSkipDelaySec: Int = 5,
+        val endingSkipDelaySec: Int = 5,
         val themeMode: String = "system",
         val volume: Int = 100,
     )

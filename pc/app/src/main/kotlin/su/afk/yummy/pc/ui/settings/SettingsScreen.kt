@@ -1,4 +1,4 @@
-// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
+﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.ui.settings
 
 import androidx.compose.foundation.background
@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,7 +56,8 @@ fun SettingsScreen() {
     var autoplayNext by remember { mutableStateOf(YummyConfig.autoplayNextEpisode) }
     var skipOpening by remember { mutableStateOf(YummyConfig.autoSkipOpening) }
     var skipEnding by remember { mutableStateOf(YummyConfig.autoSkipEnding) }
-    var skipDelay by remember { mutableStateOf(YummyConfig.skipDelaySec) }
+    var openingDelay by remember { mutableStateOf(YummyConfig.openingSkipDelaySec) }
+    var endingDelay by remember { mutableStateOf(YummyConfig.endingSkipDelaySec) }
     var checkingUpdates by remember { mutableStateOf(false) }
     var latestRelease by remember { mutableStateOf<UpdateInfo?>(null) }
     var updateChecked by remember { mutableStateOf(false) }
@@ -147,16 +150,38 @@ fun SettingsScreen() {
                     YummyConfig.updatePreferences(autoSkipEnding = it)
                 },
             )
-        }
-        SettingRow("Задержка перед пропуском") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(0, 1, 2, 3, 5).forEach { seconds ->
-                    ChoiceChip(if (seconds == 0) "Сразу" else "$seconds с", skipDelay == seconds) {
-                        skipDelay = seconds
-                        YummyConfig.updatePreferences(skipDelaySec = seconds)
-                    }
-                }
+        SettingRow("Задержка автопропуска опенинга") {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Slider(
+                    value = openingDelay.toFloat(),
+                    onValueChange = {
+                        val seconds = it.toInt().coerceIn(1, 10)
+                        openingDelay = seconds
+                        YummyConfig.updatePreferences(openingSkipDelaySec = seconds)
+                    },
+                    valueRange = 1f..10f,
+                    steps = 8,
+                    modifier = Modifier.width(220.dp),
+                )
+                Text("$openingDelay с", color = YummyPalette.TextDim)
             }
+        }
+        SettingRow("Задержка автопропуска эндинга") {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Slider(
+                    value = endingDelay.toFloat(),
+                    onValueChange = {
+                        val seconds = it.toInt().coerceIn(1, 10)
+                        endingDelay = seconds
+                        YummyConfig.updatePreferences(endingSkipDelaySec = seconds)
+                    },
+                    valueRange = 1f..10f,
+                    steps = 8,
+                    modifier = Modifier.width(220.dp),
+                )
+                Text("$endingDelay с", color = YummyPalette.TextDim)
+            }
+        }
         }
         Text(
             "Панель управления в плеере скрывается через 3 секунды бездействия. Полный экран — F11, выход — Esc.",

@@ -1,4 +1,4 @@
-// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
+﻿// Part of YummyPC — порт YummyTV (https://github.com/Helandy/YummyTV, CC BY-NC 4.0) на ПК.
 package su.afk.yummy.pc.ui.player
 
 import androidx.compose.foundation.Image
@@ -237,37 +237,51 @@ fun PlayerScreen(
         )
     }
 
-    // Автопропуск опенинга/эндинга с настраиваемой задержкой и возможностью отмены.
-    var autoSkipUndo by remember { mutableStateOf<Double?>(null) }
-    LaunchedEffect(state.positionSec, request.openingSkip, request.endingSkip) {
+    // Автопропуск: независимые задержки для опенинга/эндинга, отсчёт и отмена без перемотки.
+    var cancelledSkipZone by remember { mutableStateOf<String?>(null) }
+    var skippedSkipZone by remember { mutableStateOf<String?>(null) }
+    val openingZone = request.openingSkip
+    val endingZone = request.endingSkip
+    val openingCountdown = openingZone?.let { zone ->
+        if (YummyConfig.autoSkipOpening && cancelledSkipZone != "opening" &&
+            state.positionSec >= zone.startSec && state.positionSec < zone.endSec
+        ) {
+            kotlin.math.ceil(zone.startSec + YummyConfig.openingSkipDelaySec - state.positionSec).toInt().coerceAtLeast(0)
+        } else null
+    }
+    val endingCountdown = endingZone?.let { zone ->
+        if (YummyConfig.autoSkipEnding && cancelledSkipZone != "ending" &&
+            state.positionSec >= zone.startSec && state.positionSec < zone.endSec
+        ) {
+            kotlin.math.ceil(zone.startSec + YummyConfig.endingSkipDelaySec - state.positionSec).toInt().coerceAtLeast(0)
+        } else null
+    }
+    LaunchedEffect(state.positionSec, request.openingSkip, request.endingSkip, cancelledSkipZone) {
         if (!state.loaded || state.paused || state.ended) return@LaunchedEffect
         val pos = state.positionSec
-        val delaySec = YummyConfig.skipDelaySec.toDouble()
         val opening = request.openingSkip
         val ending = request.endingSkip
-        val zoneStart = when {
-            YummyConfig.autoSkipOpening && opening != null &&
-                pos >= opening.startSec + delaySec && pos < opening.endSec - 2.0 -> opening.startSec.toDouble()
-            YummyConfig.autoSkipEnding && ending != null &&
-                pos >= ending.startSec + delaySec && pos < ending.endSec - 2.0 -> ending.startSec.toDouble()
-            else -> null
+        if (opening != null && YummyConfig.autoSkipOpening && cancelledSkipZone != "opening" && skippedSkipZone != "opening" &&
+            pos >= opening.startSec + YummyConfig.openingSkipDelaySec && pos < opening.endSec - 2.0
+        ) {
+            player?.seekTo(opening.endSec.toDouble())
+            skippedSkipZone = "opening"
+        } else if (ending != null && YummyConfig.autoSkipEnding && cancelledSkipZone != "ending" && skippedSkipZone != "ending" &&
+            pos >= ending.startSec + YummyConfig.endingSkipDelaySec && pos < ending.endSec - 2.0
+        ) {
+            player?.seekTo(ending.endSec.toDouble())
+            skippedSkipZone = "ending"
         }
-        if (zoneStart != null && autoSkipUndo != zoneStart) {
-            val end = if (YummyConfig.autoSkipOpening && opening != null && pos < opening.endSec &&
-                pos >= opening.startSec + delaySec) opening.endSec.toDouble() else ending?.endSec?.toDouble()
-            if (end != null) {
-                player?.seekTo(end)
-                autoSkipUndo = zoneStart
-            }
+        // За пределами зоны сбрасываем отмену и отметку пропуска.
+        if (opening != null && (pos < opening.startSec || pos >= opening.endSec)) {
+            if (cancelledSkipZone == "opening") cancelledSkipZone = null
+            if (skippedSkipZone == "opening" && pos >= opening.endSec) skippedSkipZone = null
+        }
+        if (ending != null && (pos < ending.startSec || pos >= ending.endSec)) {
+            if (cancelledSkipZone == "ending") cancelledSkipZone = null
+            if (skippedSkipZone == "ending" && pos >= ending.endSec) skippedSkipZone = null
         }
     }
-    LaunchedEffect(autoSkipUndo) {
-        if (autoSkipUndo != null) {
-            kotlinx.coroutines.delay(8000)
-            autoSkipUndo = null
-        }
-    }
-
     // Синхронизация просмотра с сайтом: один PUT на текущий поток, когда серия реально
     // смотрится — 30 секунд или 10% длительности (порог «Продолжить просмотр» yani).
     LaunchedEffect(request.url, request.videoId, state.loaded, state.positionSec, state.durationSec) {
@@ -503,25 +517,14 @@ fun PlayerScreen(
                 player?.seekTo(seconds)
                 controlsVisible = true
             },
-            onCancelAutoSkip = autoSkipUndo?.let { startSeconds ->
+            onCancelAutoSkip = if (openingCountdown != null || endingCountdown != null) {
                 {
-                    player?.seekTo(startSeconds)
-                    autoSkipUndo = null
+                    cancelledSkipZone = if (openingCountdown != null) "opening" else "ending"
                     controlsVisible = true
                 }
-            },
-            autoSkipOpening = YummyConfig.autoSkipOpening,
-            autoSkipEnding = YummyConfig.autoSkipEnding,
-            skipDelaySec = YummyConfig.skipDelaySec,
-            onToggleAutoSkipOpening = {
-                YummyConfig.updatePreferences(autoSkipOpening = !YummyConfig.autoSkipOpening)
-            },
-            onToggleAutoSkipEnding = {
-                YummyConfig.updatePreferences(autoSkipEnding = !YummyConfig.autoSkipEnding)
-            },
-            onSkipDelay = { seconds ->
-                YummyConfig.updatePreferences(skipDelaySec = seconds.coerceIn(1, 10))
-            },
+            } else null,
+            openingCountdown = openingCountdown,
+            endingCountdown = endingCountdown,
             onTogglePanel = { target ->
                 tvPanel = if (tvPanel == target) TvPanel.NONE else target
                 controlsVisible = true
