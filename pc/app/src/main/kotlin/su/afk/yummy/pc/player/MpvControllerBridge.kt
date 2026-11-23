@@ -42,6 +42,8 @@ class MpvControllerBridge(pipeName: String) : MpvIpcBridge {
 
     override fun setSpeed(speed: Double): Boolean = controller.setSpeed(speed)
 
+    override fun setVolume(volume: Int): Boolean = controller.setVolume(volume)
+
     override fun quit() {
         runCatching { controller.quit() }
         runCatching { controller.disconnect() }

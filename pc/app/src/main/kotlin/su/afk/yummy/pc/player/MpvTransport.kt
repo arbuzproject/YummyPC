@@ -23,6 +23,10 @@ interface MpvIpcBridge {
     fun setPaused(paused: Boolean): Boolean
     fun seekTo(seconds: Double): Boolean
     fun setSpeed(speed: Double): Boolean
+
+    /** Громкость mpv в процентах (0–130). */
+    fun setVolume(volume: Int): Boolean
+
     fun quit()
     val state: StateFlow<MpvPlaybackState>
 }

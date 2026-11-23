@@ -111,6 +111,11 @@ fun togglePause() {
         bridge?.setSpeed(speed.toDouble())
     }
 
+    /** Громкость в процентах (0–130). */
+    fun setVolume(percent: Int) {
+        bridge?.setVolume(percent.coerceIn(0, 130))
+    }
+
     fun dispose() {
         runCatching { bridge?.quit() }
         val p = process

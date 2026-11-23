@@ -73,6 +73,11 @@ object YummyConfig {
     var themeMode: String = "system"
         private set
 
+    /** Громкость плеера в процентах (0–130). */
+    @Volatile
+    var volume: Int = 100
+        private set
+
     val isAuthorized: Boolean
         get() = userToken.isNotBlank()
 
@@ -100,6 +105,7 @@ object YummyConfig {
         autoSkipEnding = stored.autoSkipEnding
         skipDelaySec = stored.skipDelaySec.coerceIn(0, 30)
         themeMode = stored.themeMode.ifBlank { "system" }
+        volume = stored.volume.coerceIn(0, 130)
     }
 
     fun save() {
@@ -115,6 +121,7 @@ object YummyConfig {
             autoSkipEnding = autoSkipEnding,
             skipDelaySec = skipDelaySec,
             themeMode = themeMode,
+            volume = volume,
         )
         runCatching { settingsFile.writeText(json.encodeToString(SettingsDto.serializer(), dto)) }
     }
@@ -146,6 +153,7 @@ object YummyConfig {
         autoSkipEnding: Boolean? = null,
         skipDelaySec: Int? = null,
         themeMode: String? = null,
+        volume: Int? = null,
     ) {
         if (language != null) languageCode = language
         if (cardScale != null) this.cardScale = cardScale
@@ -155,6 +163,7 @@ object YummyConfig {
         if (autoSkipEnding != null) this.autoSkipEnding = autoSkipEnding
         if (skipDelaySec != null) this.skipDelaySec = skipDelaySec.coerceIn(0, 30)
         if (themeMode != null) this.themeMode = themeMode
+        if (volume != null) this.volume = volume.coerceIn(0, 130)
         save()
     }
 
@@ -178,6 +187,7 @@ object YummyConfig {
         val autoSkipEnding: Boolean = false,
         val skipDelaySec: Int = 0,
         val themeMode: String = "system",
+        val volume: Int = 100,
     )
 }
 
@@ -188,10 +198,13 @@ internal object YaniAuthHeaders {
     const val LANGUAGE = "Lang"
 }
 
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 @Serializable
 data class YaniLoginBodyDto(
     val login: String,
     val password: String,
+    // Без EncodeDefault kotlinx не отправит true — yani тогда не вернёт токен в JSON.
+    @kotlinx.serialization.EncodeDefault
     @SerialName("need_json") val needJson: Boolean = true,
     @SerialName("recaptcha_response") val captchaResponse: String? = null,
 )

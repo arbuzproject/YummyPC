@@ -71,8 +71,25 @@ class YaniAuthApi(private val client: HttpClient = YaniHttp.client) {
         if (!response.status.isSuccess()) {
             return Result.failure(AuthException(parseError(response.bodyAsText()) ?: "Не удалось войти", response.status.value))
         }
-        val token = response.body<YaniLoginResponseDto>().response.token
-        if (token.isBlank()) return Result.failure(AuthException("Сервер не вернул токен", null))
+        val raw = response.bodyAsText()
+        val token = runCatching {
+            YaniHttp.json.decodeFromString<YaniLoginResponseDto>(raw).response.token
+        }.getOrDefault("")
+        if (token.isBlank()) {
+            // Диагностика: сервер иногда отвечает 200 без токена (например, требует капчу
+            // или не получил need_json). Пишем ответ в лог без логина/пароля.
+            runCatching {
+                val file = java.io.File(System.getProperty("user.home"), ".yummypc/login.log")
+                file.parentFile?.mkdirs()
+                file.appendText("login response: ${raw.take(2000)}\n")
+            }
+            val hint = when {
+                raw.contains("captcha", ignoreCase = true) -> "Сервер требует капчу — войдите на сайте yummyani.me и повторите"
+                raw.isBlank() -> "Сервер вернул пустой ответ"
+                else -> "Сервер не вернул токен"
+            }
+            return Result.failure(AuthException(hint, null))
+        }
         YummyConfig.updateTokens(userToken = token)
         return Result.success(token)
     }

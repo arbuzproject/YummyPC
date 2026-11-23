@@ -20,14 +20,21 @@ object YaniHttp {
     /** База запросов: свой сервер (`{backend}/yani`) или прямой api.yani.tv. */
     fun baseUrl(): String = YummyConfig.yaniBaseUrl()
 
+    /**
+     * Настройки JSON для запросов и ответов. `encodeDefaults = true` важен для полей вроде
+     * `need_json` в запросе логина: иначе kotlinx не отправит `true`, и yani не вернёт токен.
+     */
+    val json: Json = Json {
+        ignoreUnknownKeys = true
+        explicitNulls = false
+        encodeDefaults = true
+    }
+
     val client: HttpClient by lazy {
         HttpClient(OkHttp) {
             expectSuccess = true
             install(ContentNegotiation) {
-                json(Json {
-                    ignoreUnknownKeys = true
-                    explicitNulls = false
-                })
+                json(json)
             }
             install(HttpTimeout) {
                 requestTimeoutMillis = 30_000

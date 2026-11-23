@@ -33,7 +33,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -142,6 +144,7 @@ fun PlayerScreen(
         mutableStateOf<String?>(null)
     }
     var controlsVisible by remember { mutableStateOf(true) }
+    var volume by remember { mutableStateOf(YummyConfig.volume) }
     // URL, для которого просмотр уже отправлен на сайт: не спамим повторными PUT.
     var reportedForUrl by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -184,6 +187,7 @@ fun PlayerScreen(
         )
         player = embedded
         embedded.start(request.url).onFailure { error = it.message ?: it.toString() }
+        embedded.setVolume(volume)
         // Запоминаем выбранную озвучку/балансер для быстрого запуска с главной.
         runCatching { rememberChoice(request) }
 
@@ -252,27 +256,8 @@ fun PlayerScreen(
         reportWatchProgress(videoApi, request.videoId, state.positionSec, duration)
     }
 
-    // Панель управления прячется через 3 секунды бездействия (диалог качества не трогаем).
-    LaunchedEffect(Unit) {
-        var lastPointer = runCatching { java.awt.MouseInfo.getPointerInfo()?.location }.getOrNull()
-        var lastActive = System.currentTimeMillis()
-        while (true) {
-            delay(250)
-            val pointer = runCatching { java.awt.MouseInfo.getPointerInfo()?.location }.getOrNull()
-            if (pointer != null && pointer != lastPointer) {
-                lastPointer = pointer
-                lastActive = System.currentTimeMillis()
-                controlsVisible = true
-            }
-            if (System.currentTimeMillis() - lastActive > 3000 &&
-                !state.paused &&
-                panel == PlayerPanel.NONE &&
-                true
-            ) {
-                controlsVisible = false
-            }
-        }
-    }
+    // Панель управления больше не рисуется Compose-слоем (его перекрывает окно mpv):
+    // управление вынесено в прозрачный оверлей-окно PlayerOverlayWindow.
 
     fun switchTo(video: VideoRef) {
         switchStatus = "Переключаю на «${video.dubbing} · ${video.player}»…"
@@ -317,6 +302,62 @@ fun PlayerScreen(
 
     LaunchedEffect(state.ended) {
         if (state.ended && YummyConfig.autoplayNextEpisode) playNextEpisode()
+    }
+
+    // Прозрачный оверлей поверх видео. mpv рисует в нативном дочернем окне, поэтому пульт —
+    // отдельное прозрачное окно ОС: появляется при наведении вниз, прячется сам.
+    val overlayWindow = remember {
+        val ownerWindow = windowControl.window
+        if (ownerWindow == null) {
+            null
+        } else {
+            PlayerOverlayWindow(
+                owner = ownerWindow,
+                onTogglePause = { player?.togglePause() },
+                onSeek = { seconds -> player?.seekTo(seconds.coerceAtLeast(0.0)) },
+                onSeekBy = { delta ->
+                    val target = (state.positionSec + delta).coerceIn(0.0, state.durationSec)
+                    player?.seekTo(target)
+                },
+                onVolume = { value ->
+                    volume = value
+                    player?.setVolume(value)
+                    YummyConfig.updatePreferences(volume = value)
+                },
+                onQuality = {
+                    val list = request.qualities
+                    if (list.size > 1) {
+                        val currentIndex = list.indexOfFirst { it.second == request.url }.takeIf { it >= 0 } ?: 0
+                        val next = list[(currentIndex + 1) % list.size]
+                        reportedForUrl = null
+                        val embedded = player
+                        val position = state.positionSec
+                        if (embedded != null && embedded.loadFile(next.second).isSuccess) {
+                            embedded.seekTo(position)
+                        }
+                        request = request.copy(url = next.second, qualityLabel = next.first)
+                        switchStatus = "Качество: ${next.first}"
+                    }
+                },
+                onSources = { panel = PlayerPanel.SOURCES },
+                onNext = { playNextEpisode() },
+                onFullscreen = { windowControl.toggleFullscreen() },
+                onClose = {
+                    if (state.positionSec > 30.0) {
+                        reportWatchProgress(videoApi, request.videoId, state.positionSec, state.durationSec)
+                    }
+                    onClose()
+                },
+            )
+        }
+    }
+    SideEffect { overlayWindow?.setPlayback(state) }
+    SideEffect { overlayWindow?.setVolume(volume) }
+    SideEffect { overlayWindow?.setQuality(request.qualityLabel) }
+    SideEffect { overlayWindow?.setTitle(request.title) }
+    SideEffect { overlayWindow?.setSuppressed(panel != PlayerPanel.NONE || error != null) }
+    DisposableEffect(Unit) {
+        onDispose { overlayWindow?.dispose() }
     }
 
     Column(Modifier.fillMaxSize().background(Color.Black)) {
@@ -374,59 +415,7 @@ fun PlayerScreen(
                 onClose = { panel = PlayerPanel.NONE },
             )
 
-            PlayerPanel.NONE -> if (controlsVisible) {
-                ControlBar(
-                    active = request,
-                    state = state,
-                    speed = speed,
-                    dragPosition = dragPosition,
-                    switchStatus = switchStatus,
-                    isFullscreen = windowControl.isFullscreen,
-                    onTogglePause = { player?.togglePause() },
-                    onSeek = { dragPosition = it },
-                    onSeekFinished = {
-                        dragPosition?.let { player?.seekTo(it.toDouble()) }
-                        dragPosition = null
-                    },
-                    onSpeed = {
-                        speed = when (speed) {
-                            1.0f -> 1.25f
-                            1.25f -> 1.5f
-                            1.5f -> 2.0f
-                            else -> 1.0f
-                        }
-                        player?.setSpeed(speed)
-                    },
-                    onQuality = {
-                        val list = request.qualities
-                        if (list.size > 1) {
-                            val current = list.indexOfFirst { it.second == request.url }.takeIf { it >= 0 } ?: 0
-                            val next = list[(current + 1) % list.size]
-                            reportedForUrl = null
-                            val embedded = player
-                            val position = state.positionSec
-                            if (embedded != null && embedded.loadFile(next.second).isSuccess) {
-                                embedded.seekTo(position)
-                            }
-                            request = request.copy(url = next.second, qualityLabel = next.first)
-                            switchStatus = "Качество: ${next.first}"
-                        }
-                    },
-                    onSources = { panel = PlayerPanel.SOURCES },
-                    onFullscreen = { windowControl.toggleFullscreen() },
-                    onSkipOpening = { request.openingSkip?.let { player?.seekTo(it.endSec.toDouble()) } },
-                    onSkipEnding = { request.endingSkip?.let { player?.seekTo(it.endSec.toDouble()) } },
-                    onNext = { playNextEpisode() },
-                    onClose = {
-                        // Финальный отчёт о просмотре: композиция сейчас закроется,
-                        // поэтому PUT уходит в scope, переживающий экран (reportWatchProgress).
-                        if (state.positionSec > 30.0) {
-                            reportWatchProgress(videoApi, request.videoId, state.positionSec, state.durationSec)
-                        }
-                        onClose()
-                    },
-                )
-            }
+            PlayerPanel.NONE -> Unit
         }
     }
 
